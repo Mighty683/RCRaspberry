@@ -5,27 +5,27 @@ const SPI = require('pi-spi')
 
 Radio.prototype.command = function (cmd, options) {
   return new Promise((resolve, reject) => {
+    let callArgs = []
     let writeArray = [cmd]
     let data = options && options.data
     let readBufferLength = options && options.readBufferLength
     if (data) {
       writeArray.concat([data])
-      this.spi.transfer(new Buffer(writeArray), function (error, data) {
-        if (error) {
-          reject(error)
-        } else {
-          resolve(data)
-        }
-      })
+      callArgs.push(new Buffer(writeArray))
     } else {
-      this.spi.transfer(new Buffer(writeArray), readBufferLength, function (error, data) {
-        if (error) {
-          reject(error)
-        } else {
-          resolve(data)
-        }
-      })
+      callArgs.push(new Buffer(writeArray))
     }
+    if (readBufferLength) {
+      callArgs.push(readBufferLength)
+    }
+    callArgs.push(function (err, data) {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(data)
+      }
+    })
+    this.spi.transfer.apply(null, callArgs)
   })
 }
 
@@ -34,7 +34,7 @@ Radio.prototype.read = function (length) {
   this.command(enums.commands.readRXPayload, {
     data: length
   }) :
-  this.command(enums.commands.readRXPayloadFIFO)
+  this.command(enums.commands.readRXPayload)
 }
 
 function Radio (spi, cePin) {
