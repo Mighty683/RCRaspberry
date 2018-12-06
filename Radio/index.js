@@ -10,7 +10,7 @@ Radio.prototype.command = function (cmd, options) {
     let readBufferLength = options && options.readBufferLength
     if (data) {
       writeArray.concat([data])
-      this.spi.transfer(writeArray, function (error, data) {
+      this.spi.transfer(new Buffer(writeArray, function (error, data) {
         if (error) {
           reject(error)
         } else {
@@ -18,7 +18,7 @@ Radio.prototype.command = function (cmd, options) {
         }
       })
     } else {
-      this.spi.transfer(writeArray, readBufferLength, function (error, data) {
+      this.spi.transfer(new Buffer(writeArray), readBufferLength, function (error, data) {
         if (error) {
           reject(error)
         } else {
