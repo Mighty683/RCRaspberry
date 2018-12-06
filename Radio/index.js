@@ -1,6 +1,7 @@
 /* */
 const SPI = require('pi-spi')
   rpio = require('rpio')
+  enums = require('./enums')
 
 Radio.prototype.command = function (cmd, options) {
   return new Promise((resolve, reject) => {
@@ -9,7 +10,7 @@ Radio.prototype.command = function (cmd, options) {
     let readBufferLength = options && options.readBufferLength
     if (data) {
       writeArray.concat([data])
-      SPI.transfer(writeArray, function (error, data) {
+      this.spi.transfer(writeArray, function (error, data) {
         if (error) {
           reject(error)
         } else {
@@ -17,7 +18,7 @@ Radio.prototype.command = function (cmd, options) {
         }
       })
     } else {
-      SPI.transfer(writeArray, readBufferLength, function (error, data) {
+      this.spi.transfer(writeArray, readBufferLength, function (error, data) {
         if (error) {
           reject(error)
         } else {
@@ -26,6 +27,14 @@ Radio.prototype.command = function (cmd, options) {
       })
     }
   })
+}
+
+Radio.prototype.read = function (length) {
+  return length ?
+  this.command(enums.commands.readRXPayload, {
+    data: length
+  }) :
+  this.command(enums.commands.readRXPayloadFIFO)
 }
 
 function Radio (spi, cePin) {
