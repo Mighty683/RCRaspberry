@@ -3,7 +3,7 @@ function decodeBinary (string) {
 }
 
 module.exports = {
-  commands: {
+  cmd: {
     readRegisters:  decodeBinary('0000 0000'),
     writeRegisters: decodeBinary('0010 0000'),
     readRXPayload: decodeBinary('0110 0001'),
@@ -15,5 +15,9 @@ module.exports = {
     writeWithACK: decodeBinary('1010 1000'),
     writeNoACK: decodeBinary('1011 0000'), // disable ack for single package
     noOperation: decodeBinary('1111 1111')
+  },
+  cmdCode: {
+    configRead: 0x00
   }
+
 }
