@@ -17,7 +17,9 @@ module.exports = {
     noOperation: decodeBinary('1111 1111')
   },
   cmdCode: {
-    configRead: 0x00
+    configRead: 0x00,
+    setRX: 0x01,
+    powerUP: 0x02,
+    powerDOWN: 0x00
   }
-
 }

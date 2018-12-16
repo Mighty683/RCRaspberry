@@ -1,7 +1,7 @@
 /* */
 const SPI = require('pi-spi')
   rpio = require('rpio')
-  e = require('./e')
+  e = require('./enums')
 
 Radio.prototype.command = function (cmd, options) {
   return new Promise((resolve, reject) => {
@@ -10,7 +10,7 @@ Radio.prototype.command = function (cmd, options) {
     let data = options && options.data
     let readBufferLength = options && options.readBufferLength
     if (data) {
-      writeArray.concat([data])
+      writeArray = writeArray.push(data)
       callArgs.push(new Buffer(writeArray))
     } else {
       callArgs.push(new Buffer(writeArray))
@@ -25,6 +25,8 @@ Radio.prototype.command = function (cmd, options) {
         resolve(data)
       }
     })
+    console.log(cmd, options)
+    console.log(Array.from(callArgs[0].values()))
     this.spi.transfer.apply(null, callArgs)
   })
 }
@@ -38,14 +40,22 @@ Radio.prototype.read = function (length) {
 }
 
 Radio.prototype.getState = function () {
-  return this.command(e.cmd.readRegisters, e.cmdCode.configRead)
+  return this.command(e.cmd.readRegisters | e.cmdCode.configRea, {
+    readBufferLength: 1
+  })
+}
+
+Radio.prototype.setState = function (set) {
+  return this.command(e.cmd.writeRegisters, {
+    data: set
+  })
 }
 
 function Radio (spi, cePin) {
   rpio.init()
-  rpio.write(8, rpio.HIGH)
+  this.cePin = cePin || 24
+  rpio.write(this.cePin, rpio.HIGH)
   this.spi = SPI.initialize(spi || '/dev/spidev0.0')
-  this.cePin = cePin || 25
 }
 
 module.exports = Radio
