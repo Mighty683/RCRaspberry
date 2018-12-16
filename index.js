@@ -16,7 +16,7 @@ if (process.argv[2]) {
     .then(data => console.log('State after init:', parseData(data)))
     .then(() => {
       setInterval(() => {
-        radio.read(1).then((data) => console.log(parseData(data)))
+        radio.read(1).then((data) => console.log('Received:', parseData(data), Date.now()))
       })
     }, 100)
     .then((data) => {

@@ -44,7 +44,7 @@ Radio.prototype.read = function (length) {
 }
 
 Radio.prototype.write = function (data) {
-  this.command(e.cmd.writeTXPayload, {
+  return this.command(e.cmd.writeTXPayload, {
     data
   })
 }
