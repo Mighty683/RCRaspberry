@@ -10,10 +10,10 @@ Radio.prototype.command = function (cmd, options) {
     let data = options && options.data
     let readBufferLength = options && options.readBufferLength
     if (data) {
-      writeArray = writeArray.push(data)
-      callArgs.push(new Buffer(writeArray))
+      writeArray.push(data)
+      callArgs.push(Buffer.from(writeArray))
     } else {
-      callArgs.push(new Buffer(writeArray))
+      callArgs.push(Buffer.from(writeArray))
     }
     if (readBufferLength) {
       callArgs.push(readBufferLength)
@@ -25,8 +25,8 @@ Radio.prototype.command = function (cmd, options) {
         resolve(data)
       }
     })
-    console.log(cmd, options)
-    console.log(Array.from(callArgs[0].values()))
+    console.log('CMD:', cmd, options)
+    console.log('PAYLOAD:', Array.from(callArgs[0].values()))
     this.spi.transfer.apply(null, callArgs)
   })
 }
@@ -40,14 +40,19 @@ Radio.prototype.read = function (length) {
 }
 
 Radio.prototype.getState = function () {
-  return this.command(e.cmd.readRegisters | e.cmdCode.configRea, {
-    readBufferLength: 1
+  return this.command(e.cmd.readRegisters | e.cmdPayload.configRead, {
+    readBufferLength: 2
   })
+}
+
+Radio.prototype.powerUP = function () {
+  let set = this.state | e.cmdPayload.powerUP
+  return this.setState(set)
 }
 
 Radio.prototype.setState = function (set) {
   return this.command(e.cmd.writeRegisters, {
-    data: set
+    data: set,
   })
 }
 
@@ -56,6 +61,7 @@ function Radio (spi, cePin) {
   this.cePin = cePin || 24
   rpio.write(this.cePin, rpio.HIGH)
   this.spi = SPI.initialize(spi || '/dev/spidev0.0')
+  this.state = 0
 }
 
 module.exports = Radio

@@ -16,10 +16,8 @@ module.exports = {
     writeNoACK: decodeBinary('1011 0000'), // disable ack for single package
     noOperation: decodeBinary('1111 1111')
   },
-  cmdCode: {
+  cmdPayload: {
     configRead: 0x00,
-    setRX: 0x01,
-    powerUP: 0x02,
-    powerDOWN: 0x00
+    powerUP: 0x02
   }
 }
