@@ -18,6 +18,9 @@ module.exports = {
   },
   cmdPayload: {
     configRead: 0x00,
-    powerUP: 0x02
+  },
+  cmdLocation: {
+    power: 1,
+    rx: 0
   }
 }
