@@ -14,7 +14,11 @@ if (process.argv[2]) {
     .then(() => radio.setRX())
     .then(() => radio.getState())
     .then(data => console.log('State after init:', parseData(data)))
-    .then(() => radio.read(1))
+    .then(() => {
+      setInterval(() => {
+        radio.read(1).then((data) => console.log(parseData(data)))
+      })
+    }, 100)
     .then((data) => {
       console.log(parseData(data))
     })
@@ -31,7 +35,7 @@ if (process.argv[2]) {
         radio.write(Buffer.from('DUPA!')).then(() => {
           console.log('Data Send:', Date.now())
         })
-      })
+      }, 100)
     })
 
 }
