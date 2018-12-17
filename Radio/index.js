@@ -4,10 +4,12 @@ const SPI = require('pi-spi')
   e = require('./enums')
 
 Radio.prototype.init = function () {
-  return this.getState().then((data) => {
-    this.state = Array.from(data.values())[1]
-    return data
-  })
+  return this.powerUP()
+    .then(() => this.getState())
+    .then((data) => {
+      this.state = Array.from(data.values())[1]
+      return data
+    })
 }
 Radio.prototype.command = function (cmd, options) {
   return new Promise((resolve, reject) => {
@@ -44,9 +46,9 @@ Radio.prototype.read = function (length) {
 }
 
 Radio.prototype.write = function (data) {
-  return this.command(e.cmd.writeTXPayload, {
+  return this.setTX().then(() => this.command(e.cmd.writeTXPayload, {
     data
-  })
+  })).then(() => this.setRX())
 }
 
 Radio.prototype.getState = function () {
@@ -78,7 +80,10 @@ Radio.prototype.setTX = function () {
 Radio.prototype.setState = function (set) {
   return this.command(e.cmd.writeRegisters, {
     data: set,
-  }).then(() => this.state = set)
+  }).then(() => {
+    this.state = set
+    return this.state
+  })
 }
 
 function Radio (spi, cePin) {
