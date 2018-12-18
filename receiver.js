@@ -1,20 +1,21 @@
 const Radio = require('./Radio')
+const e = require('./Radio/enums')
 
 let radio = new Radio()
-
-function parseData (data) {
-  return data && Array.from(data.values()).map(v => v.toString(2))
+function decodeBinary (string) {
+  return parseInt(string.replace(' ', ''), 2)
 }
+
 console.log('STARTING RECEIVER')
-radio.init().then(data => {
-  console.log(parseData(data))
-}).then(() => radio.setRX())
-  .then(() => radio.getState())
+radio.init()
+  .then(() => radio.writeRegister(e.addresses.P1Address, 0xAAAAAAAAAA))
+  .then(() => radio.setRX())
+  .then(() => radio.writeRegister(e.addresses.P1Data, decodeBinary('0000 1000')))
   .then(() => {
     setInterval(() => {
-      radio.read(1).then((data) => console.log('Received:', parseData(data), Date.now()))
-    })
-  }, 100)
-  .then((data) => {
-    console.log(parseData(data))
+      radio.read(8)
+        .then((data) => console.log('Received:', data.map(d => d.toString(16))))
+        .then(() => radio.setInitState())
+        .then((data) => console.log('State:', data.toString(2)))
+    }, 500)
   })

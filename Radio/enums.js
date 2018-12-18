@@ -4,7 +4,7 @@ function decodeBinary (string) {
 
 module.exports = {
   cmd: {
-    readRegisters:  decodeBinary('0000 0000'),
+    readRegisters:  0x00,
     writeRegisters: decodeBinary('0010 0000'),
     readRXPayload: decodeBinary('0110 0001'),
     writeTXPayload: decodeBinary('1010 0000'),
@@ -14,13 +14,23 @@ module.exports = {
     readRXPayloadFIFO: decodeBinary('0110 0000'),
     writeWithACK: decodeBinary('1010 1000'),
     writeNoACK: decodeBinary('1011 0000'), // disable ack for single package
-    noOperation: decodeBinary('1111 1111')
+    noOperation: decodeBinary('1111 1111'),
   },
-  cmdPayload: {
+  addresses: {
     configRead: 0x00,
+    txAddress: 0x10,
+    P0Address: 0x0A,
+    P1Address: 0x0B,
+    P0Data: 0x11,
+    P1Data: 0x12,
+    status: 0x07,
+    fifoStatus: 0x17,
+    ENAP0: 0x01,
   },
   cmdLocation: {
     power: 1,
-    rx: 0
+    rx: 0,
+    maxRT: 4,
+    TX_DS: 5
   }
 }
