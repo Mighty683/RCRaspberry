@@ -2,7 +2,7 @@ const Radio = require('./Radio')
 const e = require('./Radio/enums')
 let radio = new Radio('/dev/spidev1.2', 33)
 let iterator = 0
-let string = 'SOLLERS CONSULTING'
+let string = 'SOLLERS CONSULTING!'
 radio.init()
   .then(() => {
     radio.dataToWrite.push(string.charCodeAt(iterator))
