@@ -10,7 +10,6 @@
   "license": "ISC",
   "dependencies": {
     "i2c-bus": "^4.0.6",
-    "pi-spi": "^1.0.3",
     "rpio": "^1.0.11"
   }
 }
