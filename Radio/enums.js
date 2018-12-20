@@ -18,6 +18,7 @@ module.exports = {
   },
   addresses: {
     configRead: 0x00,
+    EN_RXADDR: 0x02,
     txAddress: 0x10,
     P0Address: 0x0A,
     P1Address: 0x0B,
@@ -26,11 +27,14 @@ module.exports = {
     status: 0x07,
     fifoStatus: 0x17,
     ENAP0: 0x01,
+    channel: 0x05,
   },
   cmdLocation: {
     power: 1,
     rx: 0,
     maxRT: 4,
-    TX_DS: 5
+    TX_DS: 5,
+    TX_FIFO_FULL: 0,
+    RX_FIFO_FULL: 6
   }
 }

@@ -1,14 +1,76 @@
-/* */
 const SPI = require('pi-spi')
   rpio = require('rpio')
   e = require('./enums')
+  EventEmitter = require('events').EventEmitter
+  util = require('util')
 
 Radio.prototype.init = function () {
-  return this.setInitState()
+  return this.readRegister(e.addresses.configRead)
     .then(() => this.powerUP())
     .then(() => new Promise((resolve, reject) => {
       setTimeout(resolve, 5)
     }))
+}
+
+Radio.prototype.initTX = function (addrr) {
+  return this.setTX()
+  .then(() => this.writeRegister(e.addresses.txAddress, addrr))
+  .then(() => this.writeRegister(e.addresses.P0Address, addrr))
+  .then(async () => {
+    while (!this.isRX()) {
+      if (this.dataToWrite.length > 0) {
+        await this.readRegister(e.addresses.status)
+        .then((data) => {
+          let operations = []
+          let maxRetransmit = (data & 1 << e.cmdLocation.maxRT)
+          let txFifoFull = (data & 1 << e.cmdLocation.TX_FIFO_FULL)
+          let transferInProgres = (data & 1 << e.cmdLocation.TX_DS)
+          if (!transferInProgres) {
+            if (maxRetransmit) {
+              operations.push(() => this.writeRegister(e.addresses.status, 1 << e.cmdLocation.maxRT))
+            }
+            if(txFifoFull) {
+              operations.push(() => this.command(e.cmd.flushTXFifo))
+            }
+            if (operations.length > 0) {
+              return operations.reduce((prev, curr) => {prev.then(curr)}, operations.pop()())
+            } else {
+              let transferedData = this.dataToWrite.pop()
+              this.emit('transfered', transferedData)
+              return this.write(transferedData)
+            }
+          } else {
+            console.log('Transfer in progress:', data)
+          }
+        })
+      }
+    }
+  })
+}
+
+Radio.prototype.initRX = function (addrr) {
+  let exec = () => this.readRegister(e.addresses.status)
+  .then(() => this.setCE(1))
+  .then(data => {
+    let isFifoFull = (data & 1 << e.cmdLocation.RX_FIFO_FULL)
+    if (isFifoFull) {
+      return this.read(32)
+    }
+    return undefined
+  })
+  .then((data) => {
+    if (data) {
+      this.emit('response:received', data)
+    }
+  })
+  return this.writeRegister(e.addresses.P1Address, addrr)
+    .then(() => this.writeRegister(e.addresses.P1Data, 0x20))
+    .then(() => this.setRX())
+    .then(async () => {
+      while(this.isRX()) {
+        await exec()
+      }
+    })
 }
 
 Radio.prototype.command = function (cmd, options) {
@@ -43,40 +105,20 @@ Radio.prototype.read = function (length) {
   .then((data) => {
     return this.setCE(1).then(() => Array.from(data.values()).slice(1))
   })
-  .then((data) => this.command(e.cmd.flushRXFifo).then(() => data))
 }
 
 Radio.prototype.write = function (data) {
-  let exec = () => {
-    return this.command(e.cmd.writeTXPayload, {
-      data
-    }).then(() => this.pulseCE())
-  }
-  return this.readRegister(e.addresses.status)
-    .then((data) => {
-      let mask = 1 << e.cmdLocation.maxRT
-      if ((data & mask) != 0) {
-        return this.writeRegister(e.addresses.status, mask)
-      } else {
-        return data
-      }
-    })
-    .then(() => {
-      return this.isRX()
-      ? this.setTX().then(() => exec())
-      : exec()
-  })
-}
-
-Radio.prototype.setInitState = function () {
-  return this.readRegister(e.addresses.configRead)
+  return this.command(e.cmd.writeTXPayload, {
+    data
+  }).then(() => this.setCE(1))
 }
 
 Radio.prototype.readRegister = function (registerToread, readBufferLength) {
   return this.command(e.cmd.readRegisters | registerToread, {
-    readBufferLength: readBufferLength || 2
+    readBufferLength: readBufferLength + 1 || 2
   }).then(data => {
-    this.registers[registerToread] = Array.from(data.values()).slice(1)[0]
+    let array = Array.from(data.values()).slice(1)
+    this.registers[registerToread] = array.length > 1 ? array : array[0]
     return this.registers[registerToread]
   })
 }
@@ -89,7 +131,7 @@ RX/TX Group
 
 Radio.prototype.setRX = function () {
   if (this.isRX()) {
-    return this.registers[e.addresses.configRead]
+    return Promise.resolve(this.registers[e.addresses.configRead])
   } else {
     let set = this.registers[e.addresses.configRead] | 1 << e.cmdLocation.rx
     return this.writeRegister(e.addresses.configRead, set)
@@ -97,8 +139,12 @@ Radio.prototype.setRX = function () {
 }
 
 Radio.prototype.setTX = function () {
-  let set = this.registers[e.addresses.configRead] & ~(1 << e.cmdLocation.rx)
-  return this.writeRegister(e.addresses.configRead, set)
+  if (!this.isRX()) {
+    return Promise.resolve(this.registers[e.addresses.configRead])
+  } else {
+    let set = this.registers[e.addresses.configRead] & ~(1 << e.cmdLocation.rx)
+    return this.writeRegister(e.addresses.configRead, set)
+  }
 }
 
 
@@ -137,29 +183,18 @@ Radio.prototype.powerDown = function () {
 }
 
 Radio.prototype.writeRegister = function (registerToWrite, set) {
-  let exec = () => this.command(e.cmd.writeRegisters | registerToWrite, {
+  return this.command(e.cmd.writeRegisters | registerToWrite, {
     data: set
   }).then(() => {
     this.registers[registerToWrite] = set
     return this.registers[registerToWrite]
   })
-  .then(() => this.powerUP())
-  .then(() => this.setCE(0))
-  if (this.isPowered()) {
-    return this.powerDown().then(() => {
-      return exec()
-    })
-  } else {
-    return exec()
-  }
 }
 
 Radio.prototype.pulseCE = function () {
-  let time = process.hrtime()[1]
-  rpio.write(this.cePin, 1)
-  let time2 = process.hrtime()[1]
   rpio.write(this.cePin, 0)
-  console.log(Math.round((time2 - time) / 1000))
+  rpio.write(this.cePin, 1)
+  rpio.write(this.cePin, 0)
 }
 
 Radio.prototype.setCE = function (state) {
@@ -177,6 +212,7 @@ Radio.prototype.setCE = function (state) {
 
 
 function Radio (spi, cePin) {
+  this.dataToWrite = []
   this.cePin = cePin || 22
   this.spi = SPI.initialize(spi || '/dev/spidev0.0')
   this.registers = {}
@@ -185,6 +221,7 @@ function Radio (spi, cePin) {
   this._ce = rpio.LOW
 }
 
+util.inherits(Radio, EventEmitter)
 module.exports = Radio
 
 function transformToTransportArray (number) {
