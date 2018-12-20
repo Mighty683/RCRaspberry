@@ -51,6 +51,7 @@ Radio.prototype.initTX = function (addrr) {
 
 Radio.prototype.initRX = function (addrr) {
   return this.writeRegister(e.addresses.P1Address, addrr)
+    .then(() => this.writeRegister(e.addresses.P1Data, 0x20))
     .then(() => this.setRX())
     .then(async () => {
       this._RX_INTERVAL = setInterval(async () => {
