@@ -6,6 +6,8 @@ const SPI = require('pi-spi')
 
 Radio.prototype.init = function () {
   return this.readRegister(e.addresses.configRead)
+    .then(() => this.writeRegister(e.addresses.features, 1 << e.cmdLocation.dynamicPayloadLength))
+    .then(() => this.writeRegister(e.addresses.DYNPD, 1 << e.cmdLocation.dynamicP1 | 1 << e.cmdLocation.dynamicP0))
     .then(() => this.powerUP())
     .then(() => new Promise((resolve, reject) => {
       setTimeout(resolve, 5)
@@ -17,7 +19,7 @@ Radio.prototype.initTX = function (addrr) {
   .then(() => this.writeRegister(e.addresses.txAddress, addrr))
   .then(() => this.writeRegister(e.addresses.P0Address, addrr))
   .then(async () => {
-    while (!this.isRX()) {
+    this._TX_INTERVAL = setInterval(async () => {
       if (this.dataToWrite.length > 0) {
         await this.readRegister(e.addresses.status)
         .then((data) => {
@@ -25,51 +27,53 @@ Radio.prototype.initTX = function (addrr) {
           let maxRetransmit = (data & 1 << e.cmdLocation.maxRT)
           let txFifoFull = (data & 1 << e.cmdLocation.TX_FIFO_FULL)
           let transferInProgres = (data & 1 << e.cmdLocation.TX_DS)
-          if (!transferInProgres) {
-            if (maxRetransmit) {
-              operations.push(() => this.writeRegister(e.addresses.status, 1 << e.cmdLocation.maxRT))
-            }
-            if(txFifoFull) {
-              operations.push(() => this.command(e.cmd.flushTXFifo))
-            }
-            if (operations.length > 0) {
-              return operations.reduce((prev, curr) => {prev.then(curr)}, operations.pop()())
-            } else {
-              let transferedData = this.dataToWrite.pop()
-              this.emit('transfered', transferedData)
-              return this.write(transferedData)
-            }
+          if (maxRetransmit) {
+            operations.push(() => this.writeRegister(e.addresses.status, 1 << e.cmdLocation.maxRT))
+          }
+          if(txFifoFull) {
+            operations.push(() => this.command(e.cmd.flushTXFifo))
+          }
+          if (operations.length > 0) {
+            return operations.reduce((prev, curr) => {prev.then(curr)}, operations.pop()())
           } else {
-            console.log('Transfer in progress:', data)
+            let transferedData = this.dataToWrite.pop()
+            this.emit('transfered', transferedData)
+            return this.write(transferedData)
           }
         })
       }
-    }
+      if (this.isRX()) {
+        clearInterval(this._TX_INTERVAL)
+      }
+    }, 1)
   })
 }
 
 Radio.prototype.initRX = function (addrr) {
-  let exec = () => this.readRegister(e.addresses.status)
-  .then(() => this.setCE(1))
-  .then(data => {
-    let isFifoFull = (data & 1 << e.cmdLocation.RX_FIFO_FULL)
-    if (isFifoFull) {
-      return this.read(32)
-    }
-    return undefined
-  })
-  .then((data) => {
-    if (data) {
-      this.emit('response:received', data)
-    }
-  })
   return this.writeRegister(e.addresses.P1Address, addrr)
-    .then(() => this.writeRegister(e.addresses.P1Data, 0x20))
     .then(() => this.setRX())
     .then(async () => {
-      while(this.isRX()) {
-        await exec()
-      }
+      this._RX_INTERVAL = setInterval(async () => {
+        await this.readRegister(e.addresses.P1Data)
+        .then(data => {
+          if (data > 0) {
+            return this.read(1).then(async (data) => {
+              return data
+            })
+          }
+        })
+        .then((data) => {
+          if (data) {
+            if (data.toString() !== (this._lastData && this._lastData.toString())) {
+              this._lastData = data
+              this.emit('response:received', data)
+            }
+          }
+        })
+        if (!this.isRX()) {
+          clearInterval(this._RX_INTERVAL)
+        }
+      }, 1)
     })
 }
 

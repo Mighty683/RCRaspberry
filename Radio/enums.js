@@ -26,8 +26,11 @@ module.exports = {
     P1Data: 0x12,
     status: 0x07,
     fifoStatus: 0x17,
+    payloadP1: 0x12,
     ENAP0: 0x01,
     channel: 0x05,
+    features: 0x1D,
+    DYNPD: 0x1C
   },
   cmdLocation: {
     power: 1,
@@ -35,6 +38,9 @@ module.exports = {
     maxRT: 4,
     TX_DS: 5,
     TX_FIFO_FULL: 0,
-    RX_FIFO_FULL: 6
+    RX_FIFO_FULL: 6,
+    dynamicPayloadLength: 2,
+    dynamicP0: 0,
+    dynamicP1: 1
   }
 }
