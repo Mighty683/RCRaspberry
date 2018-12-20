@@ -7,6 +7,7 @@ module.exports = {
     readRegisters:  0x00,
     writeRegisters: decodeBinary('0010 0000'),
     readRXPayload: decodeBinary('0110 0001'),
+    readRXWidth: decodeBinary('0110 0000'),
     writeTXPayload: decodeBinary('1010 0000'),
     flushTXFifo: decodeBinary('1110 0001'),
     flushRXFifo: decodeBinary('1110 0010'),
