@@ -18,6 +18,7 @@ Radio.prototype.initTX = function (addrr) {
   return this.setTX()
   .then(() => this.writeRegister(e.addresses.txAddress, addrr))
   .then(() => this.writeRegister(e.addresses.P0Address, addrr))
+  .then(() => this.setCE(1))
   .then(async () => {
     this._TX_INTERVAL = setInterval(async () => {
       if (this.dataToWrite.length > 0) {
@@ -26,17 +27,24 @@ Radio.prototype.initTX = function (addrr) {
           let operations = []
           let maxRetransmit = (data & 1 << e.cmdLocation.maxRT)
           let txFifoFull = (data & 1 << e.cmdLocation.TX_FIFO_FULL)
-          let transferInProgres = (data & 1 << e.cmdLocation.TX_DS)
+          let ackReceived = (data & 1 << e.cmdLocation.TX_DS)
           if (maxRetransmit) {
+            console.log('Max retransmit limit reached!')
             operations.push(() => this.writeRegister(e.addresses.status, 1 << e.cmdLocation.maxRT))
           }
           if(txFifoFull) {
+            console.log('TX fifo full!')
             operations.push(() => this.command(e.cmd.flushTXFifo))
+          }
+          if (ackReceived) {
+            console.log('ACK Received!')
+            operations.push(() => this.writeRegister(e.addresses.status, 1 << e.cmdLocation.TX_DS))
           }
           if (operations.length > 0) {
             return operations.reduce((prev, curr) => {prev.then(curr)}, operations.pop()())
           } else {
-            let transferedData = this.dataToWrite.pop()
+            let transferedData = this.dataToWrite.reduce((value, currentValue) => (value << 8) + currentValue, 0)
+            this.dataToWrite = []
             this.emit('transfered', transferedData)
             return this.write(transferedData)
           }
@@ -53,28 +61,28 @@ Radio.prototype.initRX = function (addrr) {
   return this.writeRegister(e.addresses.P1Address, addrr)
     .then(() => this.writeRegister(e.addresses.P1Data, 0x20))
     .then(() => this.setRX())
+    .then(() => this.setCE(1))
     .then(async () => {
       this._RX_INTERVAL = setInterval(async () => {
         await this.readRegister(e.addresses.P1Data)
         .then(data => {
           if (data > 0) {
-            return this.read(1).then(async (data) => {
+            return this.read(4).then(async (data) => {
               return data
             })
           }
         })
         .then((data) => {
           if (data) {
-            if (data.toString() !== (this._lastData && this._lastData.toString())) {
-              this._lastData = data
-              this.emit('response:received', data)
-            }
+            this._lastData = data
+            if (data.every((val, index) => index === 0 || val !== data[0]))
+            this.emit('response:received', parseData(data))
           }
         })
         if (!this.isRX()) {
           clearInterval(this._RX_INTERVAL)
         }
-      }, 1)
+      }, 100)
     })
 }
 
@@ -115,7 +123,7 @@ Radio.prototype.read = function (length) {
 Radio.prototype.write = function (data) {
   return this.command(e.cmd.writeTXPayload, {
     data
-  }).then(() => this.setCE(1))
+  })
 }
 
 Radio.prototype.readRegister = function (registerToread, readBufferLength) {
@@ -229,6 +237,9 @@ function Radio (spi, cePin) {
 util.inherits(Radio, EventEmitter)
 module.exports = Radio
 
+function parseData (data) {
+  return data.map(charCode => String.fromCharCode(charCode)).join('')
+}
 function transformToTransportArray (number) {
   let array = []
   let string = number.toString(16)

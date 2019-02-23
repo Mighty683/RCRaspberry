@@ -9,6 +9,6 @@ radio.init()
   .then(() => {
     radio.initRX(0xA2A3A1A1A1)
     radio.on('response:received', data => {
-      console.log('Received:', String.fromCharCode(data[0]))
+      console.log('Received:', data)
     })
   })
