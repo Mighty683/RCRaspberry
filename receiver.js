@@ -3,12 +3,20 @@ const Servo = require('./Servo')
 const e = require('./Radio/enums')
 let radio = new Radio()
 let servo = new Servo()
+let centringTimeout
 async function startProgram () {
   await servo.init()
   await radio.init()
   await radio.initRX(0xA2A3A1A1A1, 4)
   radio.on('response:received', data => {
-    console.log('Received:', data)
+    if (centringTimeout) {
+      centringTimeout = null
+      clearTimeout(centringTimeout)
+    }
+    centringTimeout = setTimeout(function () {
+      servo.center(0)
+      servo.center(1)
+    }, 500)
     let servoCode = data[0]
     let servoCommand = data[1]
     let commandValue = data.slice(-2)
