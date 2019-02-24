@@ -1,3 +1,6 @@
+
+"use strict"
+
 process.stdin.setRawMode(true)
 
 const Radio = require('./Radio')
@@ -24,6 +27,18 @@ async function  startTrasmitter () {
     }
     if ( key === '\u001b[C') {
       command = '1-10'
+    }
+    if (key === 'w') {
+      command = '0U05'
+    }
+    if (key === 's') {
+      command = '0D05'
+    }
+    if (key === 'a') {
+      command = '1U05'
+    }
+    if (key === 'd') {
+      command = '1D05'
     }
     radio.transmit(command).then(() => console.log('Transmitted:', command))
   })

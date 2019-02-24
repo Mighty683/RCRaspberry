@@ -1,3 +1,5 @@
+"use strict"
+
 const Radio = require('./Radio')
 const Servo = require('./Servo')
 const e = require('./Radio/enums')
@@ -9,10 +11,7 @@ async function startProgram () {
   await radio.init()
   await radio.initRX(0xA2A3A1A1A1, 4)
   radio.on('response:received', data => {
-    if (centringTimeout) {
-      centringTimeout = null
-      clearTimeout(centringTimeout)
-    }
+    clearTimeout(centringTimeout)
     centringTimeout = setTimeout(function () {
       servo.center(0)
       servo.center(1)

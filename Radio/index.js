@@ -1,7 +1,9 @@
-const SPI = require('pi-spi')
-  rpio = require('rpio')
-  e = require('./enums')
-  EventEmitter = require('events').EventEmitter
+"use strict"
+
+const SPI = require('pi-spi'),
+  rpio = require('rpio'),
+  e = require('./enums'),
+  EventEmitter = require('events').EventEmitter,
   util = require('util')
 
 class Radio extends EventEmitter {
