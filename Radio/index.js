@@ -6,8 +6,6 @@ const SPI = require('pi-spi')
 
 Radio.prototype.init = function () {
   return this.readRegister(e.addresses.configRead)
-    .then(() => this.writeRegister(e.addresses.features, 1 << e.cmdLocation.dynamicPayloadLength))
-    .then(() => this.writeRegister(e.addresses.DYNPD, 1 << e.cmdLocation.dynamicP1 | 1 << e.cmdLocation.dynamicP0))
     .then(() => this.powerUP())
     .then(() => new Promise((resolve, reject) => {
       setTimeout(resolve, 5)
@@ -23,7 +21,7 @@ Radio.prototype.initTX = function (addrr) {
     this._TX_INTERVAL = setInterval(async () => {
       if (this.dataToWrite.length > 0) {
         await this.readRegister(e.addresses.status)
-        .then((data) => {
+        .then(data => {
           let operations = []
           let maxRetransmit = (data & 1 << e.cmdLocation.maxRT)
           let txFifoFull = (data & 1 << e.cmdLocation.TX_FIFO_FULL)
@@ -45,7 +43,6 @@ Radio.prototype.initTX = function (addrr) {
           } else {
             let transferedData = this.dataToWrite.reduce((value, currentValue) => (value << 8) + currentValue, 0)
             this.dataToWrite = []
-            this.emit('transfered', transferedData)
             return this.write(transferedData)
           }
         })
@@ -57,28 +54,27 @@ Radio.prototype.initTX = function (addrr) {
   })
 }
 
-Radio.prototype.initRX = function (addrr) {
+Radio.prototype.initRX = function (addrr, packetLenght) {
   return this.writeRegister(e.addresses.P1Address, addrr)
     .then(() => this.writeRegister(e.addresses.P1Data, 0x20))
     .then(() => this.setRX())
     .then(() => this.setCE(1))
+    .then(() => this.writeRegister(e.addresses.P1Data , packetLenght))
     .then(async () => {
       this._RX_INTERVAL = setInterval(async () => {
-        await this.readRegister(e.addresses.P1Data)
-        .then(data => {
-          if (data > 0) {
-            return this.read(4).then(async (data) => {
-              return data
-            })
-          }
-        })
-        .then((data) => {
-          if (data) {
-            this._lastData = data
-            if (data.every((val, index) => index === 0 || val !== data[0]))
-            this.emit('response:received', parseData(data))
-          }
-        })
+        await this.readRegister(e.addresses.status)
+          .then(data => {
+            let rxDataPresent = (data & 1 << e.cmdLocation.RX_FIFO_ACTIVE)
+            if (rxDataPresent) {
+              return this.writeRegister(e.addresses.status, 1 << e.cmdLocation.RX_FIFO_ACTIVE).then(() => this.read(packetLenght))
+            }
+          })
+          .then(data => {
+            if (data) {
+              this._lastData = parseData(data)
+              this.emit('response:received',this._lastData)
+            }
+          })
         if (!this.isRX()) {
           clearInterval(this._RX_INTERVAL)
         }
@@ -115,9 +111,7 @@ Radio.prototype.read = function (length) {
   return this.command(e.cmd.readRXPayload, {
     readBufferLength: length + 1
   })
-  .then((data) => {
-    return this.setCE(1).then(() => Array.from(data.values()).slice(1))
-  })
+  .then((data) => Array.from(data.values()).slice(1))
 }
 
 Radio.prototype.write = function (data) {
@@ -222,8 +216,6 @@ Radio.prototype.setCE = function (state) {
   })
 }
 
-
-
 function Radio (spi, cePin) {
   this.dataToWrite = []
   this.cePin = cePin || 22
@@ -234,12 +226,14 @@ function Radio (spi, cePin) {
   this._ce = rpio.LOW
 }
 
+
 util.inherits(Radio, EventEmitter)
 module.exports = Radio
 
 function parseData (data) {
   return data.map(charCode => String.fromCharCode(charCode)).join('')
 }
+
 function transformToTransportArray (number) {
   let array = []
   let string = number.toString(16)

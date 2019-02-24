@@ -39,7 +39,7 @@ module.exports = {
     maxRT: 4,
     TX_DS: 5,
     TX_FIFO_FULL: 0,
-    RX_FIFO_FULL: 6,
+    RX_FIFO_ACTIVE: 6,
     dynamicPayloadLength: 2,
     dynamicP0: 0,
     dynamicP1: 1
