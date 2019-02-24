@@ -17,41 +17,6 @@ Radio.prototype.initTX = function (addrr) {
   .then(() => this.writeRegister(e.addresses.txAddress, addrr))
   .then(() => this.writeRegister(e.addresses.P0Address, addrr))
   .then(() => this.setCE(1))
-  .then(async () => {
-    this._TX_INTERVAL = setInterval(async () => {
-      if (this.dataToWrite.length > 0) {
-        await this.readRegister(e.addresses.status)
-        .then(data => {
-          let operations = []
-          let maxRetransmit = (data & 1 << e.cmdLocation.maxRT)
-          let txFifoFull = (data & 1 << e.cmdLocation.TX_FIFO_FULL)
-          let ackReceived = (data & 1 << e.cmdLocation.TX_DS)
-          if (maxRetransmit) {
-            console.log('Max retransmit limit reached!')
-            operations.push(() => this.writeRegister(e.addresses.status, 1 << e.cmdLocation.maxRT))
-          }
-          if(txFifoFull) {
-            console.log('TX fifo full!')
-            operations.push(() => this.command(e.cmd.flushTXFifo))
-          }
-          if (ackReceived) {
-            console.log('ACK Received!')
-            operations.push(() => this.writeRegister(e.addresses.status, 1 << e.cmdLocation.TX_DS))
-          }
-          if (operations.length > 0) {
-            return operations.reduce((prev, curr) => {prev.then(curr)}, operations.pop()())
-          } else {
-            let transferedData = this.dataToWrite.reduce((value, currentValue) => (value << 8) + currentValue, 0)
-            this.dataToWrite = []
-            return this.write(transferedData)
-          }
-        })
-      }
-      if (this.isRX()) {
-        clearInterval(this._TX_INTERVAL)
-      }
-    }, 1)
-  })
 }
 
 Radio.prototype.initRX = function (addrr, packetLenght) {
@@ -71,14 +36,13 @@ Radio.prototype.initRX = function (addrr, packetLenght) {
           })
           .then(data => {
             if (data) {
-              this._lastData = parseData(data)
-              this.emit('response:received',this._lastData)
+              this.emit('response:received', parseData(data))
             }
           })
         if (!this.isRX()) {
           clearInterval(this._RX_INTERVAL)
         }
-      }, 100)
+      }, 10)
     })
 }
 
@@ -107,6 +71,51 @@ Radio.prototype.command = function (cmd, options) {
   })
 }
 
+/**
+ * Trasmit/Receive data section
+ */
+
+Radio.prototype.transmit = async function (dataToTransmit) {
+  let transportArray = []
+  if (typeof dataToTransmit === 'string') {
+    transportArray = dataToTransmit.split('').map(char => char.charCodeAt(0))
+  } else {
+    transportArray = dataToTransmit
+  }
+  if (transportArray.length > 0 && !this.isRX()) {
+    if (!this.cePin) {
+      await this.setCE(1)
+    }
+    let statusRegister = await this.readRegister(e.addresses.status)
+
+    let operations = []
+    let maxRetransmit = (statusRegister & 1 << e.cmdLocation.maxRT)
+    let txFifoFull = (statusRegister & 1 << e.cmdLocation.TX_FIFO_FULL)
+    /**
+     * To use when want check transmittion integrity
+     * let ackReceived = (statusRegister & 1 << e.cmdLocation.TX_DS)
+     */ 
+
+    if (maxRetransmit) {
+      /**
+       * Max RT bit has to be cleared on limit reach to enable further transmittion
+       */
+      log('Max retransmit limit reached!')
+      operations.push(() => this.writeRegister(e.addresses.status, 1 << e.cmdLocation.maxRT))
+    }
+    if(txFifoFull) {
+      log('TX fifo full!')
+      operations.push(() => this.command(e.cmd.flushTXFifo))
+    }
+    if (operations.length > 0) {
+      log('Transmittion blocked!')
+      await operations.reduce((prev, curr) => {prev.then(curr)}, operations.pop()())
+    } else {
+      return this.write(transportArray.reduce((value, currentValue) => (value << 8) + currentValue, 0))
+    }
+  }
+}
+
 Radio.prototype.read = function (length) {
   return this.command(e.cmd.readRXPayload, {
     readBufferLength: length + 1
@@ -117,16 +126,6 @@ Radio.prototype.read = function (length) {
 Radio.prototype.write = function (data) {
   return this.command(e.cmd.writeTXPayload, {
     data
-  })
-}
-
-Radio.prototype.readRegister = function (registerToread, readBufferLength) {
-  return this.command(e.cmd.readRegisters | registerToread, {
-    readBufferLength: readBufferLength + 1 || 2
-  }).then(data => {
-    let array = Array.from(data.values()).slice(1)
-    this.registers[registerToread] = array.length > 1 ? array : array[0]
-    return this.registers[registerToread]
   })
 }
 
@@ -189,6 +188,16 @@ Radio.prototype.powerDown = function () {
   })
 }
 
+Radio.prototype.readRegister = function (registerToread, readBufferLength) {
+  return this.command(e.cmd.readRegisters | registerToread, {
+    readBufferLength: readBufferLength + 1 || 2
+  }).then(data => {
+    let array = Array.from(data.values()).slice(1)
+    this.registers[registerToread] = array.length > 1 ? array : array[0]
+    return this.registers[registerToread]
+  })
+}
+
 Radio.prototype.writeRegister = function (registerToWrite, set) {
   return this.command(e.cmd.writeRegisters | registerToWrite, {
     data: set
@@ -217,7 +226,6 @@ Radio.prototype.setCE = function (state) {
 }
 
 function Radio (spi, cePin) {
-  this.dataToWrite = []
   this.cePin = cePin || 22
   this.spi = SPI.initialize(spi || '/dev/spidev0.0')
   this.registers = {}
@@ -244,4 +252,10 @@ function transformToTransportArray (number) {
     array.push(string[i] + string[i+1])
   }
   return array.map(e => parseInt(e, 16))
+}
+
+function log () {
+  if (process.env.NODE_ENV === 'debug') {
+    console.log.apply(console, arguments)
+  }
 }

@@ -1,12 +1,28 @@
 const Radio = require('./Radio')
+const Servo = require('./Servo')
 const e = require('./Radio/enums')
-
 let radio = new Radio()
-
-radio.init()
-  .then(() => {
-    radio.initRX(0xA2A3A1A1A1, 4)
-    radio.on('response:received', data => {
-      console.log('Received:', data)
-    })
+let servo = new Servo()
+async function startProgram () {
+  await servo.init()
+  await radio.init()
+  await radio.initRX(0xA2A3A1A1A1, 4)
+  radio.on('response:received', data => {
+    console.log('Received:', data)
+    let servoCode = data[0]
+    let servoCommand = data[1]
+    let commandValue = data.slice(-2)
+    if (servoCommand === '+') {
+      servo.move(servoCode, parseInt(commandValue))
+    } else if (servoCommand === '-') {
+      servo.move(servoCode, -parseInt(commandValue))
+    } else if (servoCommand === 'U') {
+      servo.calibrate(servoCode, parseInt(commandValue))
+    } else if (servoCommand === 'D') {
+      servo.calibrate(servoCode, -parseInt(commandValue))
+    }
   })
+}
+
+
+startProgram()
