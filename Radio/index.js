@@ -31,7 +31,11 @@ Radio.prototype.initRX = function (addrr, packetLenght) {
           .then(data => {
             let rxDataPresent = (data & 1 << e.cmdLocation.RX_FIFO_ACTIVE)
             if (rxDataPresent) {
-              return this.writeRegister(e.addresses.status, 1 << e.cmdLocation.RX_FIFO_ACTIVE).then(() => this.read(packetLenght))
+              return this.writeRegister(e.addresses.status, 1 << e.cmdLocation.RX_FIFO_ACTIVE)
+                .then(() => this.read(packetLenght))
+                .then(data => {
+                  return this.command(e.cmd.flushRXFifo).then(() => data)
+                })
             }
           })
           .then(data => {
