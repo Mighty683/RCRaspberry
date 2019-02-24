@@ -31,6 +31,7 @@ class Radio extends EventEmitter {
         this._RX_INTERVAL = setInterval(async () => {
           await this.readRegister(e.addresses.status)
             .then(data => {
+              log(data.toString(2))
               let rxDataPresent = (data & 1 << e.cmdLocation.RX_FIFO_ACTIVE)
               if (rxDataPresent) {
                 return this.writeRegister(e.addresses.status, 1 << e.cmdLocation.RX_FIFO_ACTIVE)
@@ -92,10 +93,12 @@ class Radio extends EventEmitter {
         await this.setCE(1)
       }
       let statusRegister = await this.readRegister(e.addresses.status)
+      console.log(statusRegister.toString(2))
 
       let operations = []
       let maxRetransmit = (statusRegister & 1 << e.cmdLocation.maxRT)
       let txFifoFull = (statusRegister & 1 << e.cmdLocation.TX_FIFO_FULL)
+      let ackReceived = (statusRegister & 1 << e.cmdLocation.TX_DS)
       /**
        * To use when want check transmittion integrity
        * let ackReceived = (statusRegister & 1 << e.cmdLocation.TX_DS)
@@ -111,6 +114,9 @@ class Radio extends EventEmitter {
       if(txFifoFull) {
         log('TX fifo full!')
         operations.push(() => this.command(e.cmd.flushTXFifo))
+      }
+      if (ackReceived) {
+        log('ACK Received!')
       }
       if (operations.length > 0) {
         log('Transmittion blocked!')
