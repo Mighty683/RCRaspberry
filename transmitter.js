@@ -4,7 +4,7 @@
 process.stdin.setRawMode(true)
 
 const Radio = require('./Radio')
-let radio = new Radio('/dev/spidev1.2', 33)
+let radio = new Radio()
 
 async function  startTrasmitter () {
   await radio.init()

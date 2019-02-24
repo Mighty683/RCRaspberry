@@ -3,7 +3,7 @@
 const Radio = require('./Radio')
 const Servo = require('./Servo')
 const e = require('./Radio/enums')
-let radio = new Radio()
+let radio = new Radio('/dev/spidev1.2', 33)
 let servo = new Servo()
 let centringTimeout
 async function startProgram () {
