@@ -2,9 +2,12 @@
 
 const Radio = require('./Radio')
 const Servo = require('./Servo')
-const e = require('./Radio/enums')
+const Engine = require('./Engine')
+
 let radio = new Radio()
 let servo = new Servo()
+let engine = new Engine()
+
 let centringTimeout
 async function startProgram () {
   await servo.init()
@@ -16,18 +19,31 @@ async function startProgram () {
       servo.center(0)
       servo.center(1)
     }, 500)
-    let servoCode = data[0]
-    let servoCommand = data[1]
+    let target = data[0]
+    let command = data[1]
     let commandValue = data.slice(-2)
-    if (servoCommand === '+') {
-      servo.move(servoCode, parseInt(commandValue))
-    } else if (servoCommand === '-') {
-      servo.move(servoCode, -parseInt(commandValue))
-    } else if (servoCommand === 'U') {
-      servo.calibrate(servoCode, parseInt(commandValue))
-    } else if (servoCommand === 'D') {
-      servo.calibrate(servoCode, -parseInt(commandValue))
+    if (target === '0' || target === '1') {
+      // SERVO COMMANDS
+      if (command === '+') {
+        servo.move(target, parseInt(commandValue))
+      } else if (command === '-') {
+        servo.move(target, -parseInt(commandValue))
+      } else if (command === 'U') {
+        servo.calibrate(target, parseInt(commandValue))
+      } else if (command === 'D') {
+        servo.calibrate(target, -parseInt(commandValue))
+      }
+    } else if (target === 'E') {
+      // ENGINE COMMAND
+      if (command === '+') {
+        engine.move(1)
+      } else if (command === '-') {
+        engine.move(0)
+      } else if (command === '0') {
+        engine.turnOff()
+      }
     }
+    
   })
 }
 
