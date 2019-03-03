@@ -40,6 +40,12 @@ async function  startTrasmitter () {
     if (key === 'd') {
       command = '1D05'
     }
+    if (key === 'Z') {
+      command = 'E+00'
+    }
+    if (key === 'X') {
+      command = 'E-00'
+    }
     radio.transmit(command).then(() => console.log('Transmitted:', command))
   })
 }
