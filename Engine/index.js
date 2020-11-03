@@ -6,7 +6,9 @@ const MAX_RANGE = 1024
 class Engine extends EventEmitter {
   constructor (PWMPin) {
     super()
-    rpio.init()
+    rpio.init({
+      gpiomem: false,
+    });
     rpio.open(PWMPin || 12, rpio.PWM)
     rpio.pwmSetClockDivider(64)
     rpio.pwmSetRange(12, 1024)
