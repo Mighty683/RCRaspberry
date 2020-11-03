@@ -1,24 +1,24 @@
 "use strict"
 
 const Radio = require('./Radio')
-const Servo = require('./Servo')
+// const Servo = require('./Servo')
 const Engine = require('./Engine')
 
 let radio = new Radio()
-let servo = new Servo()
+// let servo = new Servo()
 let engine = new Engine()
 
-let centringTimeout
+let centringTimeout;
 async function startProgram () {
-  await servo.init()
+  // await servo.init()
   await radio.init()
   await radio.initRX(0xA2A3A1A1A1, 4)
   radio.on('response:received', data => {
-    clearTimeout(centringTimeout)
-    centringTimeout = setTimeout(function () {
-      servo.center(0)
-      servo.center(1)
-    }, 500)
+    // clearTimeout(centringTimeout)
+    // centringTimeout = setTimeout(function () {
+    //   servo.center(0)
+    //   servo.center(1)
+    // }, 500)
     console.log(data);
     let target = data[0]
     let command = data[1]
@@ -26,13 +26,13 @@ async function startProgram () {
     if (target === '0' || target === '1') {
       // SERVO COMMANDS
       if (command === '+') {
-        servo.move(target, parseInt(commandValue))
+        // servo.move(target, parseInt(commandValue))
       } else if (command === '-') {
-        servo.move(target, -parseInt(commandValue))
+        // servo.move(target, -parseInt(commandValue))
       } else if (command === 'U') {
-        servo.calibrate(target, parseInt(commandValue))
+        // servo.calibrate(target, parseInt(commandValue))
       } else if (command === 'D') {
-        servo.calibrate(target, -parseInt(commandValue))
+        // servo.calibrate(target, -parseInt(commandValue))
       }
     } else if (target === 'E') {
       // ENGINE COMMAND

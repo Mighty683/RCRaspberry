@@ -26,12 +26,12 @@ class ServoController {
 
   async init () {
     this.bus = i2c.openSync(1)
-    this.bus.writeByteSync(addr, 0, 0x20)
+    await this.bus.writeByte(addr, 0, 0x20)
     await sleep(250)
-    this.bus.writeByteSync(addr, 0, 0x10)
+    await this.bus.writeByte(addr, 0, 0x10)
     await sleep(250)
-    this.bus.writeByteSync(addr, 0xfe, 0x79)
-    this.bus.writeByteSync(addr, 0, 0x20)
+    await this.bus.writeByte(addr, 0xfe, 0x79)
+    await this.bus.writeByte(addr, 0, 0x20)
     await sleep(250)
     pins.forEach((pin, index) => this.move(index, pin.center))
     return;
