@@ -10,7 +10,7 @@ let engine = new Engine()
 
 let centringTimeout;
 async function startProgram () {
-  // await servo.init()
+  await servo.init()
   await radio.init()
   await radio.initRX(0xA2A3A1A1A1, 4)
   radio.on('response:received', data => {

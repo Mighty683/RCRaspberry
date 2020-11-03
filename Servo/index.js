@@ -57,7 +57,7 @@ class ServoController {
     this.center(pinCode)
   }
   
-  move (pinCode, degrees, absolute) {
+  async move (pinCode, degrees, absolute) {
     let pin = pins[pinCode]
     let position = absolute ? degrees : pin.position + degrees
     if (position < pin.commandRange[0]) {
@@ -66,8 +66,8 @@ class ServoController {
       position = pin.commandRange[1]
     }
     pin.position = position
-    this.bus.writeWordSync(addr, pin.start, 0)
-    this.bus.writeWordSync(addr, pin.end, position)
+    await this.bus.writeWord(addr, pin.start, 0)
+    await this.bus.writeWord(addr, pin.end, position)
   }
 
   constructor () {
