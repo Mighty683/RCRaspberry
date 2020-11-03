@@ -7,6 +7,9 @@ const SPI = require('pi-spi'),
   util = require('util')
 
 class Radio extends EventEmitter {
+  /**
+   * Init connection with controller.
+   */
   init () {
     return this.readRegister(e.addresses.configRead)
       .then(() => this.powerUP())
@@ -14,6 +17,10 @@ class Radio extends EventEmitter {
         setTimeout(resolve, 5)
       }))
   }
+  /**
+   * Enable transmitter mode
+   * @param {*} addrr - address
+   */
   initTX (addrr) {
     return this.setTX()
     .then(() => this.writeRegister(e.addresses.txAddress, addrr))
@@ -21,6 +28,11 @@ class Radio extends EventEmitter {
     .then(() => this.setCE(1))
   }
 
+  /**
+   * Enable receiver mode.
+   * @param {String} addrr - address
+   * @param {Number} packetLenght - packet is single char.
+   */
   initRX (addrr, packetLenght) {
     return this.writeRegister(e.addresses.P1Address, addrr)
       .then(() => this.writeRegister(e.addresses.P1Data, 0x20))
@@ -31,7 +43,6 @@ class Radio extends EventEmitter {
         this._RX_INTERVAL = setInterval(async () => {
           await this.readRegister(e.addresses.status)
             .then(data => {
-              log(data.toString(2))
               let rxDataPresent = (data & 1 << e.cmdLocation.RX_FIFO_ACTIVE)
               if (rxDataPresent) {
                 return this.writeRegister(e.addresses.status, 1 << e.cmdLocation.RX_FIFO_ACTIVE)
@@ -52,7 +63,11 @@ class Radio extends EventEmitter {
         }, 10)
       })
   }
-
+  /**
+   * Send command to controller
+   * @param {*} cmd 
+   * @param {*} options 
+   */
   command (cmd, options) {
     return new Promise((resolve, reject) => {
       let callArgs = []
@@ -197,9 +212,9 @@ class Radio extends EventEmitter {
     })
   }
 
-  readRegister (registerToread, readBufferLength) {
+  readRegister (registerToread) {
     return this.command(e.cmd.readRegisters | registerToread, {
-      readBufferLength: readBufferLength + 1 || 2
+      readBufferLength: 2
     }).then(data => {
       let array = Array.from(data.values()).slice(1)
       this.registers[registerToread] = array.length > 1 ? array : array[0]
