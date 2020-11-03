@@ -29,4 +29,4 @@ class Engine extends EventEmitter {
     this.state = MIN_RANGE
   }
 }
-export default Engine
+module.exports = Engine
