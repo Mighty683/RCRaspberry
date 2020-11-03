@@ -93,8 +93,6 @@ class Radio extends EventEmitter {
         await this.setCE(1)
       }
       let statusRegister = await this.readRegister(e.addresses.status)
-      console.log(statusRegister.toString(2))
-
       let operations = []
       let maxRetransmit = (statusRegister & 1 << e.cmdLocation.maxRT)
       let txFifoFull = (statusRegister & 1 << e.cmdLocation.TX_FIFO_FULL)
