@@ -19,6 +19,7 @@ async function startProgram () {
       servo.center(0)
       servo.center(1)
     }, 500)
+    console.log(data);
     let target = data[0]
     let command = data[1]
     let commandValue = data.slice(-2)
