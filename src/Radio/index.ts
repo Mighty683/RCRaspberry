@@ -31,6 +31,7 @@ export class Radio extends EventEmitter {
     await this.writeRegister(Enums.addresses.txAddress, transmitterAddress);
     await this.writeRegister(Enums.addresses.P0Address, transmitterAddress);
     await this.setCE(1);
+    this.log('TX INITIALIZED');
   }
 
   /**
@@ -50,12 +51,14 @@ export class Radio extends EventEmitter {
         await this.writeRegister(Enums.addresses.status, 1 << Enums.cmdLocation.RX_FIFO_ACTIVE);
         const packetsReceived = await this.read(packetLength);
         await this.command(Enums.cmd.flushRXFifo);
+        this.log('Data received', parseData(packetsReceived));
         this.emit("response:received", parseData(packetsReceived));
       }
       if (!this.isRX()) {
         clearInterval(this._RX_INTERVAL);
       }
     }, 10);
+    this.log('RX INITIALIZED');
   }
   /**
    * Send command to controller
@@ -210,7 +213,6 @@ export class Radio extends EventEmitter {
     });
 
     this.registers[registerAddress] = registerState.values().next().value;
-
     return this.registers[registerAddress];
   }
 
@@ -249,7 +251,7 @@ export class Radio extends EventEmitter {
   }
 
   log(...args): void {
-    if (process.env.ENABLE_DEBUGGER === "debug") {
+    if (process.env.ENABLE_DEBUGGER) {
       console.log(args);
     }
   }

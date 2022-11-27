@@ -1,7 +1,7 @@
 import { Radio } from "./Radio";
 
-export async function startTrasmitter(address: number): Promise<void> {
-  const radio = new Radio();
+export async function startTrasmitter(address: number, spi: string, ce: number): Promise<void> {
+  const radio = new Radio(spi, ce);
   await radio.init();
   await radio.initTX(address);
 
@@ -37,10 +37,10 @@ export async function startTrasmitter(address: number): Promise<void> {
     if (key === "d") {
       command = "1D05";
     }
-    if (key === "Z") {
+    if (key === "z") {
       command = "E+00";
     }
-    if (key === "X") {
+    if (key === "x") {
       command = "E-00";
     }
     radio.transmit(command).then(() => console.log("Transmitted:", command));

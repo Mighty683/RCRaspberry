@@ -3,8 +3,8 @@ import { ServoController } from "./Servo";
 
 import { Engine } from "./Engine";
 
-export async function startReceiver(address: number): Promise<void> {
-  const radio = new Radio();
+export async function startReceiver(address: number, spi: string, ce: number): Promise<void> {
+  const radio = new Radio(spi, ce);
   const servo = new ServoController();
   const engine = new Engine();
   let centringTimeout: NodeJS.Timeout;

@@ -19,7 +19,7 @@
     "rpio": "2.4.2"
   },
   "devDependencies": {
-    "@types/node": "^18.6.4",
+    "@types/node": "^18.11.9",
     "@types/pi-spi": "^0.0.28",
     "@types/rpio": "^2.4.2",
     "@typescript-eslint/eslint-plugin": "^4.13.0",
