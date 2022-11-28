@@ -12,6 +12,7 @@ export class Radio extends EventEmitter {
   private _RX_INTERVAL: NodeJS.Timer;
   private spi: SPIInterface;
   private readonly cePin: number;
+  private readonly spiAddress: string;
   private readonly registers: Record<number, number> = {};
   private _ce: number;
 
@@ -19,46 +20,68 @@ export class Radio extends EventEmitter {
    * Init connection with controller.
    */
   async init(): Promise<void> {
-    await this.readRegister(Enums.addresses.configRead);
+    rpio.init();
+    rpio.open(this.cePin, rpio.OUTPUT, rpio.LOW);
+    this._ce = rpio.LOW;
+    this.spi = SPI.initialize(this.spiAddress);
+    await this.waitTime(100);
+    await this.readRegister(Enums.registerAddresses.CONFIG);
     await this.powerUP();
     await this.waitTime(5);
+    this.log(`INITIALIZED RADIO ON ${this.spiAddress} and CE pin ${this.cePin}`);
+  }
+
+  async setDataRate(): Promise<void> {
+    await this.writeRegister(
+      Enums.registerAddresses.RF_SETUP,
+      this.setBitLow(
+        this.setBitHigh(
+          await this.readRegister(Enums.registerAddresses.RF_SETUP),
+          Enums.bitLocation.RF_DR_LOW
+        ),
+        Enums.bitLocation.RF_DR_HIGH
+      )
+    );
   }
   /**
    * Enable transmitter mode
    */
   async initTX(transmitterAddress: number): Promise<void> {
     await this.setTX();
-    await this.writeRegister(Enums.addresses.txAddress, transmitterAddress);
-    await this.writeRegister(Enums.addresses.P0Address, transmitterAddress);
+    await this.writeRegister(Enums.registerAddresses.TX_ADDRESS, transmitterAddress);
+    await this.writeRegister(Enums.registerAddresses.P0Address, transmitterAddress);
     await this.setCE(1);
-    this.log('TX INITIALIZED');
+    this.log("TX INITIALIZED");
   }
 
   /**
    * Enable receiver mode.
    */
-  async initRX(receiverAddress: number, packetLength: number): Promise<void> {
-    await this.writeRegister(Enums.addresses.P1Address, receiverAddress);
-    await this.writeRegister(Enums.addresses.P1Data, 0x20);
+  async initRX(receiverAddress: number): Promise<void> {
+    await this.writeRegister(Enums.registerAddresses.P0Address, receiverAddress);
+    await this.writeRegister(Enums.registerAddresses.P0Data, 0x20);
     await this.setRX();
     await this.setCE(1);
-    await this.writeRegister(Enums.addresses.P1Data, packetLength);
+    await this.writeRegister(Enums.registerAddresses.P0Data, 4);
     this._RX_INTERVAL = setInterval(async () => {
-      const statusRegister = await this.readRegister(Enums.addresses.status);
+      const statusRegister = await this.readRegister(Enums.registerAddresses.STATUS);
 
-      const rxDataPresent = statusRegister & (1 << Enums.cmdLocation.RX_FIFO_ACTIVE);
+      const rxDataPresent = statusRegister & (1 << Enums.bitLocation.RX_FIFO_ACTIVE);
       if (rxDataPresent) {
-        await this.writeRegister(Enums.addresses.status, 1 << Enums.cmdLocation.RX_FIFO_ACTIVE);
-        const packetsReceived = await this.read(packetLength);
-        await this.command(Enums.cmd.flushRXFifo);
-        this.log('Data received', parseData(packetsReceived));
+        await this.writeRegister(
+          Enums.registerAddresses.STATUS,
+          1 << Enums.bitLocation.RX_FIFO_ACTIVE
+        );
+        const packetsReceived = await this.read(4);
+        await this.command(Enums.commandCode.flushRXFifo);
+        this.log("Data received", parseData(packetsReceived));
         this.emit("response:received", parseData(packetsReceived));
       }
       if (!this.isRX()) {
         clearInterval(this._RX_INTERVAL);
       }
     }, 10);
-    this.log('RX INITIALIZED');
+    this.log("RX INITIALIZED");
   }
   /**
    * Send command to controller
@@ -114,11 +137,11 @@ export class Radio extends EventEmitter {
       if (!this.cePin) {
         await this.setCE(1);
       }
-      const statusRegister = await this.readRegister(Enums.addresses.status);
-      const operations = [];
-      const maxRetransmit = statusRegister & (1 << Enums.cmdLocation.maxRT);
-      const txFifoFull = statusRegister & (1 << Enums.cmdLocation.TX_FIFO_FULL);
-      const ackReceived = statusRegister & (1 << Enums.cmdLocation.TX_DS);
+      const statusRegister = await this.readRegister(Enums.registerAddresses.STATUS);
+      const operations: (() => Promise<unknown>)[] = [];
+      const maxRetransmit = statusRegister & (1 << Enums.bitLocation.maxRT);
+      const txFifoFull = statusRegister & (1 << Enums.bitLocation.TX_FIFO_FULL);
+      const ackReceived = statusRegister & (1 << Enums.bitLocation.TX_DS);
 
       if (maxRetransmit) {
         /**
@@ -126,21 +149,20 @@ export class Radio extends EventEmitter {
          */
         this.log("Max retransmit limit reached!");
         operations.push(() =>
-          this.writeRegister(Enums.addresses.status, 1 << Enums.cmdLocation.maxRT)
+          this.writeRegister(Enums.registerAddresses.STATUS, 1 << Enums.bitLocation.maxRT)
         );
       }
       if (txFifoFull) {
         this.log("TX fifo full!");
-        operations.push(() => this.command(Enums.cmd.flushTXFifo));
+        operations.push(() => this.command(Enums.commandCode.flushTXFifo));
       }
       if (ackReceived) {
         this.log("ACK Received!");
       }
       if (operations.length > 0) {
-        this.log("Transmittion blocked!");
-        await operations.reduce((prev, curr) => {
-          prev.then(curr);
-        }, operations.pop()());
+        for (const operation of operations) {
+          await operation();
+        }
       } else {
         return this.write(
           transportArray.reduce((value, currentValue) => (value << 8) + currentValue, 0)
@@ -150,7 +172,7 @@ export class Radio extends EventEmitter {
   }
 
   async read(length: number): Promise<number[]> {
-    const responseBuffer = await this.command(Enums.cmd.readRXPayload, {
+    const responseBuffer = await this.command(Enums.commandCode.readRXPayload, {
       readBufferLength: length + 1,
     });
 
@@ -160,7 +182,7 @@ export class Radio extends EventEmitter {
   }
 
   write(data: number): Promise<Buffer> {
-    return this.command(Enums.cmd.writeTXPayload, {
+    return this.command(Enums.commandCode.writeTXPayload, {
       data,
     });
   }
@@ -172,17 +194,23 @@ export class Radio extends EventEmitter {
   */
 
   async setRX(): Promise<void> {
-    const set = this.registers[Enums.addresses.configRead] | (1 << Enums.cmdLocation.rx);
-    await this.writeRegister(Enums.addresses.configRead, set);
+    const set = this.setBitHigh(
+      this.registers[Enums.registerAddresses.CONFIG],
+      Enums.bitLocation.rx
+    );
+    await this.writeRegister(Enums.registerAddresses.CONFIG, set);
   }
 
   async setTX(): Promise<void> {
-    const set = this.registers[Enums.addresses.configRead] & ~(1 << Enums.cmdLocation.rx);
-    await this.writeRegister(Enums.addresses.configRead, set);
+    const set = this.setBitLow(
+      this.registers[Enums.registerAddresses.CONFIG],
+      Enums.bitLocation.rx
+    );
+    await this.writeRegister(Enums.registerAddresses.CONFIG, set);
   }
 
   isRX(): boolean {
-    return (this.registers[Enums.addresses.configRead] & (1 << Enums.cmdLocation.rx)) != 0;
+    return (this.registers[Enums.registerAddresses.CONFIG] & (1 << Enums.bitLocation.rx)) != 0;
   }
 
   /*
@@ -192,23 +220,27 @@ export class Radio extends EventEmitter {
   */
 
   isPowered(): boolean {
-    return (this.registers[Enums.addresses.configRead] & (1 << Enums.cmdLocation.power)) != 0;
+    return (this.registers[Enums.registerAddresses.CONFIG] & (1 << Enums.bitLocation.power)) != 0;
   }
 
   async powerUP(): Promise<void> {
-    const configRegisterState =
-      this.registers[Enums.addresses.configRead] | (1 << Enums.cmdLocation.power);
-    await this.writeRegister(Enums.addresses.configRead, configRegisterState);
+    const configRegisterState = this.setBitHigh(
+      this.registers[Enums.registerAddresses.CONFIG],
+      Enums.bitLocation.power
+    );
+    await this.writeRegister(Enums.registerAddresses.CONFIG, configRegisterState);
   }
 
   async powerDown(): Promise<void> {
-    const configRegisterState =
-      this.registers[Enums.addresses.configRead] & ~(1 << Enums.cmdLocation.power);
-    await this.writeRegister(Enums.addresses.configRead, configRegisterState);
+    const configRegisterState = this.setBitLow(
+      this.registers[Enums.registerAddresses.CONFIG],
+      Enums.bitLocation.power
+    );
+    await this.writeRegister(Enums.registerAddresses.CONFIG, configRegisterState);
   }
 
   async readRegister(registerAddress: number): Promise<number> {
-    const registerState = await this.command(Enums.cmd.readRegisters | registerAddress, {
+    const registerState = await this.command(Enums.commandCode.readRegisters | registerAddress, {
       readBufferLength: 2,
     });
 
@@ -217,7 +249,7 @@ export class Radio extends EventEmitter {
   }
 
   async writeRegister(registerToWrite: number, data: number): Promise<number> {
-    await this.command(Enums.cmd.writeRegisters | registerToWrite, {
+    await this.command(Enums.commandCode.writeRegisters | registerToWrite, {
       data,
     });
 
@@ -250,19 +282,24 @@ export class Radio extends EventEmitter {
     });
   }
 
-  log(...args): void {
+  log(...args: unknown[]): void {
     if (process.env.ENABLE_DEBUGGER) {
-      console.log(args);
+      console.log(...args);
     }
+  }
+
+  setBitHigh(source: number, location: number): number {
+    return source | (1 << location);
+  }
+
+  setBitLow(source: number, location: number): number {
+    return source & ~(1 << location);
   }
 
   constructor(spi = "/dev/spidev0.0", cePin = 22) {
     super();
     this.cePin = cePin;
-    this.spi = SPI.initialize(spi);
-    rpio.init();
-    rpio.open(this.cePin, rpio.OUTPUT, rpio.LOW);
-    this._ce = rpio.LOW;
+    this.spiAddress = spi;
   }
 }
 

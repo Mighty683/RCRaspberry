@@ -1,6 +1,5 @@
 import { Radio } from "./Radio";
 import { ServoController } from "./Servo";
-
 import { Engine } from "./Engine";
 
 export async function startReceiver(address: number, spi: string, ce: number): Promise<void> {
@@ -12,7 +11,7 @@ export async function startReceiver(address: number, spi: string, ce: number): P
   await servo.init();
   await radio.init();
 
-  await radio.initRX(address, 4);
+  await radio.initRX(address);
 
   radio.on("response:received", (data) => {
     clearTimeout(centringTimeout);
