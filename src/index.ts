@@ -1,4 +1,5 @@
-import dot from 'dotenv';
+import dot from "dotenv";
+
 import { startReceiver } from "./receiver";
 import { startTrasmitter } from "./transmitter";
 
@@ -11,5 +12,5 @@ const ce = process.env.RADIO_CE && parseInt(process.env.RADIO_CE);
 if (process.env.IS_TRANSMITTER) {
   startTrasmitter(ADDRESS, spi, ce);
 } else {
-  startReceiver(ADDRESS, spi ,ce);
+  startReceiver(ADDRESS, spi, ce);
 }

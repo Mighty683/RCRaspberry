@@ -11,24 +11,24 @@ import Enums from "./enums";
 export class Radio extends EventEmitter {
   private _RX_INTERVAL: NodeJS.Timer;
   private spi: SPIInterface;
-  private readonly cePin: number;
+  private readonly cePinNumber: number;
   private readonly spiAddress: string;
   private readonly registers: Record<number, number> = {};
-  private _ce: number;
+  private cePinState: number;
 
   /**
    * Init connection with controller.
    */
   async init(): Promise<void> {
     rpio.init();
-    rpio.open(this.cePin, rpio.OUTPUT, rpio.LOW);
-    this._ce = rpio.LOW;
+    rpio.open(this.cePinNumber, rpio.OUTPUT, rpio.LOW);
+    this.cePinState = rpio.LOW;
     this.spi = SPI.initialize(this.spiAddress);
-    await this.waitTime(100);
+    await this.waitTime(10);
     await this.readRegister(Enums.registerAddresses.CONFIG);
     await this.powerUP();
     await this.waitTime(5);
-    this.log(`INITIALIZED RADIO ON ${this.spiAddress} and CE pin ${this.cePin}`);
+    this.log(`INITIALIZED RADIO ON ${this.spiAddress} and CE pin ${this.cePinNumber}`);
   }
 
   async setDataRate(): Promise<void> {
@@ -126,47 +126,54 @@ export class Radio extends EventEmitter {
   /**
    * Trasmit/Receive data section
    */
-  async transmit(dataToTransmit: string | number[]): Promise<Buffer> {
-    let transportArray: number[];
-    if (typeof dataToTransmit === "string") {
-      transportArray = dataToTransmit.split("").map((char) => char.charCodeAt(0));
-    } else {
-      transportArray = dataToTransmit;
+  async transmit(dataToTransmit: string): Promise<Buffer> {
+    if (this.isRX()) {
+      throw new Error("Cannot transmit in RX mode");
     }
-    if (transportArray.length > 0 && !this.isRX()) {
-      if (!this.cePin) {
-        await this.setCE(1);
-      }
-      const statusRegister = await this.readRegister(Enums.registerAddresses.STATUS);
-      const operations: (() => Promise<unknown>)[] = [];
-      const maxRetransmit = statusRegister & (1 << Enums.bitLocation.maxRT);
-      const txFifoFull = statusRegister & (1 << Enums.bitLocation.TX_FIFO_FULL);
-      const ackReceived = statusRegister & (1 << Enums.bitLocation.TX_DS);
 
-      if (maxRetransmit) {
+    await this.transmitPreCheck();
+
+    const transportArray = dataToTransmit.split("").map((char) => char.charCodeAt(0));
+
+    const result = this.write(
+      transportArray.reduce((value, currentValue) => (value << 8) + currentValue, 0)
+    );
+
+    return result;
+  }
+
+  async transmitPreCheck(): Promise<void> {
+    const statusRegisterState = await this.readRegister(Enums.registerAddresses.STATUS);
+    const preCheckOperations: (() => Promise<unknown>)[] = [];
+    const maxRetransmit = statusRegisterState & (1 << Enums.bitLocation.maxRT);
+    const txFifoFull = statusRegisterState & (1 << Enums.bitLocation.TX_FIFO_FULL);
+    const ackReceived = statusRegisterState & (1 << Enums.bitLocation.TX_DS);
+
+    if (maxRetransmit) {
+      preCheckOperations.push(async () => {
         /**
          * Max RT bit has to be cleared on limit reach to enable further transmittion
          */
-        this.log("Max retransmit limit reached!");
-        operations.push(() =>
-          this.writeRegister(Enums.registerAddresses.STATUS, 1 << Enums.bitLocation.maxRT)
-        );
-      }
-      if (txFifoFull) {
-        this.log("TX fifo full!");
-        operations.push(() => this.command(Enums.commandCode.flushTXFifo));
-      }
-      if (ackReceived) {
-        this.log("ACK Received!");
-      }
-      if (operations.length > 0) {
-        for (const operation of operations) {
-          await operation();
-        }
-      } else {
-        return this.write(
-          transportArray.reduce((value, currentValue) => (value << 8) + currentValue, 0)
-        );
+        this.log("Clearing MAX_RT bit!");
+        await this.writeRegister(Enums.registerAddresses.STATUS, 1 << Enums.bitLocation.maxRT);
+      });
+    }
+
+    if (txFifoFull) {
+      preCheckOperations.push(async () => {
+        this.log("Flushing TX fifo");
+        await this.command(Enums.commandCode.flushTXFifo);
+      });
+    }
+
+    if (ackReceived) {
+      this.log("ACK Received!");
+    }
+
+    if (preCheckOperations.length > 0) {
+      for (const operation of preCheckOperations) {
+        await operation();
+        await this.waitTime(1);
       }
     }
   }
@@ -258,20 +265,14 @@ export class Radio extends EventEmitter {
     return this.registers[registerToWrite];
   }
 
-  pulseCE(): void {
-    rpio.write(this.cePin, 0);
-    rpio.write(this.cePin, 1);
-    rpio.write(this.cePin, 0);
-  }
-
   setCE(state: number): Promise<number> {
     return new Promise((resolve) => {
-      if (state !== this._ce) {
-        rpio.write(this.cePin, state);
-        this._ce = state;
-        resolve(this._ce);
+      if (state !== this.cePinState) {
+        rpio.write(this.cePinNumber, state);
+        this.cePinState = state;
+        resolve(this.cePinState);
       } else {
-        resolve(this._ce);
+        resolve(this.cePinState);
       }
     });
   }
@@ -298,7 +299,7 @@ export class Radio extends EventEmitter {
 
   constructor(spi = "/dev/spidev0.0", cePin = 22) {
     super();
-    this.cePin = cePin;
+    this.cePinNumber = cePin;
     this.spiAddress = spi;
   }
 }

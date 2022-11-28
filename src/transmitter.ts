@@ -8,7 +8,7 @@ export async function startTrasmitter(address: number, spi: string, ce: number):
   process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.setEncoding("utf8");
-  process.stdin.on("data", function (key: string) {
+  process.stdin.on("data", async function (key: string) {
     let command = "0000";
     if (key === "\u0003") {
       process.exit();
@@ -43,6 +43,12 @@ export async function startTrasmitter(address: number, spi: string, ce: number):
     if (key === "x") {
       command = "E-00";
     }
-    radio.transmit(command).then(() => console.log("Transmitted:", command));
+
+    try {
+      await radio.transmit(command);
+      console.log("Transmitted:", command);
+    } catch (e) {
+      console.error(e);
+    }
   });
 }
