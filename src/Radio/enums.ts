@@ -14,14 +14,11 @@ export default {
   },
   registerAddresses: {
     CONFIG: 0x00,
-    EN_RXADDR: 0x02,
     RF_SETUP: 0x06,
     TX_ADDRESS: 0x10,
     P0_ADDRESS: 0x0a,
     P0_BYTE_DATA_LENGTH: 0x11,
     STATUS: 0x07,
-    FIFO_STATUS: 0x17,
-    CHANNEL: 0x05,
   },
   bitLocation: {
     POWER: 1,

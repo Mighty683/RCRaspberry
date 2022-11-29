@@ -40,6 +40,7 @@ export class Radio extends EventEmitter {
 
   async enableTransmitterMode(transmitterAddress: number): Promise<void> {
     await this.writeRegister(Enums.registerAddresses.TX_ADDRESS, transmitterAddress);
+    await this.writeRegister(Enums.registerAddresses.P0_ADDRESS, transmitterAddress);
     await this.setTX();
     await this.powerUp();
     this.log("TX MODE INITIALIZED");
@@ -47,7 +48,7 @@ export class Radio extends EventEmitter {
 
   async enableReceiverMode(receiverAddress: number): Promise<void> {
     await this.writeRegister(Enums.registerAddresses.P0_ADDRESS, receiverAddress);
-    await this.writeRegister(Enums.registerAddresses.P0_BYTE_DATA_LENGTH, 12);
+    await this.writeRegister(Enums.registerAddresses.P0_BYTE_DATA_LENGTH, 4);
     await this.setRX();
     await this.powerUp();
     await this.setCE(1);
@@ -112,34 +113,29 @@ export class Radio extends EventEmitter {
     });
   }
 
-  async transmit(dataToTransmit: string): Promise<Buffer> {
+  async transmit(dataToTransmit: string): Promise<boolean> {
     if (await this.isRX()) {
       throw new Error("Cannot transmit in RX mode");
     }
 
-    await this.transmitPreCheck();
+    await this.flushTXFifo();
+    await this.clearMaxRetransmit();
 
     const transportArray = dataToTransmit.split("").map((char) => char.charCodeAt(0));
-    const result = await this.sendData(
+    await this.sendData(
       transportArray.reduce((value, currentValue) => (value << 8) + currentValue, 0)
     );
     await this.setCE(1);
+    await this.waitTime(3);
+    await this.setCE(0);
+    const receivedAcknowledge = !!this.readBit(
+      await this.readRegister(Enums.registerAddresses.STATUS),
+      Enums.bitLocation.TX_DS
+    );
 
-    return result;
-  }
+    await this.clearAck();
 
-  async transmitPreCheck(): Promise<void> {
-    const statusRegisterState = await this.readRegister(Enums.registerAddresses.STATUS);
-    const maxRetransmit = this.readBit(statusRegisterState, Enums.bitLocation.MAX_RT);
-    const txFifoFull = this.readBit(statusRegisterState, Enums.bitLocation.TX_FIFO_FULL);
-
-    if (maxRetransmit) {
-      await this.clearMaxRetransmit();
-    }
-
-    if (txFifoFull) {
-      await this.flushTXFifo();
-    }
+    return receivedAcknowledge;
   }
 
   private async flushTXFifo() {
@@ -150,6 +146,11 @@ export class Radio extends EventEmitter {
   private async clearMaxRetransmit() {
     this.log("Clearing MAX_RT bit!");
     await this.writeRegister(Enums.registerAddresses.STATUS, 1 << Enums.bitLocation.MAX_RT);
+  }
+
+  private async clearAck() {
+    this.log("Clearing Ack bit!");
+    await this.writeRegister(Enums.registerAddresses.STATUS, 1 << Enums.bitLocation.TX_DS);
   }
 
   async read(length: number): Promise<number[]> {

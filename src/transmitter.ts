@@ -45,8 +45,12 @@ export async function startTransmitter(address: number, spi: string, ce: number)
     }
 
     try {
-      await radio.transmit(command);
-      console.log("Transmitted:", command);
+      const success = await radio.transmit(command);
+      if (success) {
+        console.log("Transmitted:", command);
+      } else {
+        console.log(`Transmition for command ${command} failed!`);
+      }
     } catch (e) {
       console.error(e);
     }
