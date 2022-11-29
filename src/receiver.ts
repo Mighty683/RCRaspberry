@@ -9,9 +9,9 @@ export async function startReceiver(address: number, spi: string, ce: number): P
   let centringTimeout: NodeJS.Timeout;
 
   await servo.init();
-  await radio.init();
+  await radio.initializeConnectionWithRadio();
 
-  await radio.initRX(address);
+  await radio.enableReceiverMode(address);
 
   radio.on("response:received", (data) => {
     clearTimeout(centringTimeout);

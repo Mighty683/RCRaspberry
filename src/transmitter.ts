@@ -1,9 +1,9 @@
 import { Radio } from "./Radio";
 
-export async function startTrasmitter(address: number, spi: string, ce: number): Promise<void> {
+export async function startTransmitter(address: number, spi: string, ce: number): Promise<void> {
   const radio = new Radio(spi, ce);
-  await radio.init();
-  await radio.initTX(address);
+  await radio.initializeConnectionWithRadio();
+  await radio.enableTransmitterMode(address);
 
   process.stdin.setRawMode(true);
   process.stdin.resume();

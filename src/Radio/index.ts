@@ -4,31 +4,25 @@ import { EventEmitter } from "events";
 
 import SPI from "pi-spi";
 import type { SPI as SPIInterface } from "pi-spi";
-import rpio from "rpio";
+import rpio, { writebuf } from "rpio";
 
 import Enums from "./enums";
 
 export class Radio extends EventEmitter {
-  private _RX_INTERVAL: NodeJS.Timer;
+  private rxInterval: NodeJS.Timer;
   private spi: SPIInterface;
-  private readonly cePinNumber: number;
-  private readonly spiAddress: string;
-  private readonly registers: Record<number, number> = {};
   private cePinState: number;
 
-  /**
-   * Init connection with controller.
-   */
-  async init(): Promise<void> {
+  private readonly CEPinNumber: number;
+  private readonly SPIAddress: string;
+
+  async initializeConnectionWithRadio(): Promise<void> {
     rpio.init();
-    rpio.open(this.cePinNumber, rpio.OUTPUT, rpio.LOW);
+    rpio.open(this.CEPinNumber, rpio.OUTPUT, rpio.LOW);
     this.cePinState = rpio.LOW;
-    this.spi = SPI.initialize(this.spiAddress);
-    await this.waitTime(10);
-    await this.readRegister(Enums.registerAddresses.CONFIG);
-    await this.powerUP();
-    await this.waitTime(5);
-    this.log(`INITIALIZED RADIO ON ${this.spiAddress} and CE pin ${this.cePinNumber}`);
+    this.spi = SPI.initialize(this.SPIAddress);
+    await this.powerUp();
+    this.log(`INITIALIZED RADIO ON ${this.SPIAddress} and CE pin ${this.CEPinNumber}`);
   }
 
   async setDataRate(): Promise<void> {
@@ -43,46 +37,42 @@ export class Radio extends EventEmitter {
       )
     );
   }
-  /**
-   * Enable transmitter mode
-   */
-  async initTX(transmitterAddress: number): Promise<void> {
-    await this.setTX();
+
+  async enableTransmitterMode(transmitterAddress: number): Promise<void> {
     await this.writeRegister(Enums.registerAddresses.TX_ADDRESS, transmitterAddress);
-    await this.writeRegister(Enums.registerAddresses.P0Address, transmitterAddress);
-    await this.setCE(1);
-    this.log("TX INITIALIZED");
+    await this.setTX();
+    await this.powerUp();
+    this.log("TX MODE INITIALIZED");
   }
 
-  /**
-   * Enable receiver mode.
-   */
-  async initRX(receiverAddress: number): Promise<void> {
-    await this.writeRegister(Enums.registerAddresses.P0Address, receiverAddress);
-    await this.writeRegister(Enums.registerAddresses.P0Data, 0x20);
+  async enableReceiverMode(receiverAddress: number): Promise<void> {
+    await this.writeRegister(Enums.registerAddresses.P0_ADDRESS, receiverAddress);
+    await this.writeRegister(Enums.registerAddresses.P0_BYTE_DATA_LENGTH, 12);
     await this.setRX();
+    await this.powerUp();
     await this.setCE(1);
-    await this.writeRegister(Enums.registerAddresses.P0Data, 4);
-    this._RX_INTERVAL = setInterval(async () => {
-      const statusRegister = await this.readRegister(Enums.registerAddresses.STATUS);
-
-      const rxDataPresent = statusRegister & (1 << Enums.bitLocation.RX_FIFO_ACTIVE);
-      if (rxDataPresent) {
-        await this.writeRegister(
-          Enums.registerAddresses.STATUS,
-          1 << Enums.bitLocation.RX_FIFO_ACTIVE
-        );
-        const packetsReceived = await this.read(4);
-        await this.command(Enums.commandCode.flushRXFifo);
-        this.log("Data received", parseData(packetsReceived));
-        this.emit("response:received", parseData(packetsReceived));
-      }
-      if (!this.isRX()) {
-        clearInterval(this._RX_INTERVAL);
-      }
-    }, 10);
-    this.log("RX INITIALIZED");
+    this.rxInterval = setInterval(() => this.readDataIntervalCallback(), 10);
+    this.log("RX MODE INITIALIZED");
   }
+  private async readDataIntervalCallback() {
+    if (!(await this.isRX())) {
+      this.log("Disabling RX interval");
+      return clearInterval(this.rxInterval);
+    }
+    const statusRegister = await this.readRegister(Enums.registerAddresses.STATUS);
+    const rxDataPresent = statusRegister & (1 << Enums.bitLocation.RX_FIFO_ACTIVE);
+    if (rxDataPresent) {
+      await this.writeRegister(
+        Enums.registerAddresses.STATUS,
+        1 << Enums.bitLocation.RX_FIFO_ACTIVE
+      );
+      const packetsReceived = await this.read(4);
+      await this.command(Enums.commandCode.flushRXFifo);
+      this.log("Data received", this.parseData(packetsReceived));
+      this.emit("response:received", this.parseData(packetsReceived));
+    }
+  }
+
   /**
    * Send command to controller
    * @param {*} cmd
@@ -96,12 +86,11 @@ export class Radio extends EventEmitter {
     }
   ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const writeArray = transformToTransportArray(cmd);
-      const data = options && options.data;
+      const writeBuffer = Buffer.from([
+        cmd,
+        ...(options?.data ? this.transformToTransportArray(options.data) : []),
+      ]);
       const readBufferLength = options && options.readBufferLength;
-      const writeBuffer = data
-        ? Buffer.from(writeArray.concat(transformToTransportArray(data)))
-        : Buffer.from(writeArray);
 
       if (readBufferLength) {
         this.spi.transfer(writeBuffer, readBufferLength, function (err, data) {
@@ -123,59 +112,44 @@ export class Radio extends EventEmitter {
     });
   }
 
-  /**
-   * Trasmit/Receive data section
-   */
   async transmit(dataToTransmit: string): Promise<Buffer> {
-    if (this.isRX()) {
+    if (await this.isRX()) {
       throw new Error("Cannot transmit in RX mode");
     }
 
     await this.transmitPreCheck();
 
     const transportArray = dataToTransmit.split("").map((char) => char.charCodeAt(0));
-
-    const result = this.write(
+    const result = await this.sendData(
       transportArray.reduce((value, currentValue) => (value << 8) + currentValue, 0)
     );
+    await this.setCE(1);
 
     return result;
   }
 
   async transmitPreCheck(): Promise<void> {
     const statusRegisterState = await this.readRegister(Enums.registerAddresses.STATUS);
-    const preCheckOperations: (() => Promise<unknown>)[] = [];
-    const maxRetransmit = statusRegisterState & (1 << Enums.bitLocation.maxRT);
-    const txFifoFull = statusRegisterState & (1 << Enums.bitLocation.TX_FIFO_FULL);
-    const ackReceived = statusRegisterState & (1 << Enums.bitLocation.TX_DS);
+    const maxRetransmit = this.readBit(statusRegisterState, Enums.bitLocation.MAX_RT);
+    const txFifoFull = this.readBit(statusRegisterState, Enums.bitLocation.TX_FIFO_FULL);
 
     if (maxRetransmit) {
-      preCheckOperations.push(async () => {
-        /**
-         * Max RT bit has to be cleared on limit reach to enable further transmittion
-         */
-        this.log("Clearing MAX_RT bit!");
-        await this.writeRegister(Enums.registerAddresses.STATUS, 1 << Enums.bitLocation.maxRT);
-      });
+      await this.clearMaxRetransmit();
     }
 
     if (txFifoFull) {
-      preCheckOperations.push(async () => {
-        this.log("Flushing TX fifo");
-        await this.command(Enums.commandCode.flushTXFifo);
-      });
+      await this.flushTXFifo();
     }
+  }
 
-    if (ackReceived) {
-      this.log("ACK Received!");
-    }
+  private async flushTXFifo() {
+    this.log("Flushing TX fifo");
+    await this.command(Enums.commandCode.flushTXFifo);
+  }
 
-    if (preCheckOperations.length > 0) {
-      for (const operation of preCheckOperations) {
-        await operation();
-        await this.waitTime(1);
-      }
-    }
+  private async clearMaxRetransmit() {
+    this.log("Clearing MAX_RT bit!");
+    await this.writeRegister(Enums.registerAddresses.STATUS, 1 << Enums.bitLocation.MAX_RT);
   }
 
   async read(length: number): Promise<number[]> {
@@ -188,87 +162,91 @@ export class Radio extends EventEmitter {
     return Array.from(responseBuffer.values()).slice(1);
   }
 
-  write(data: number): Promise<Buffer> {
+  sendData(data: number): Promise<Buffer> {
     return this.command(Enums.commandCode.writeTXPayload, {
       data,
     });
   }
 
   /*
-
-  RX/TX Group
-
+    RX/TX Group
   */
 
   async setRX(): Promise<void> {
-    const set = this.setBitHigh(
-      this.registers[Enums.registerAddresses.CONFIG],
-      Enums.bitLocation.rx
+    await this.writeRegister(
+      Enums.registerAddresses.CONFIG,
+      this.setBitHigh(await this.readRegister(Enums.registerAddresses.CONFIG), Enums.bitLocation.RX)
     );
-    await this.writeRegister(Enums.registerAddresses.CONFIG, set);
   }
 
   async setTX(): Promise<void> {
-    const set = this.setBitLow(
-      this.registers[Enums.registerAddresses.CONFIG],
-      Enums.bitLocation.rx
+    await this.writeRegister(
+      Enums.registerAddresses.CONFIG,
+      this.setBitLow(await this.readRegister(Enums.registerAddresses.CONFIG), Enums.bitLocation.RX)
     );
-    await this.writeRegister(Enums.registerAddresses.CONFIG, set);
   }
 
-  isRX(): boolean {
-    return (this.registers[Enums.registerAddresses.CONFIG] & (1 << Enums.bitLocation.rx)) != 0;
-  }
-
-  /*
-
-  Main register group: power up and down has to be the same as setState
-
-  */
-
-  isPowered(): boolean {
-    return (this.registers[Enums.registerAddresses.CONFIG] & (1 << Enums.bitLocation.power)) != 0;
-  }
-
-  async powerUP(): Promise<void> {
-    const configRegisterState = this.setBitHigh(
-      this.registers[Enums.registerAddresses.CONFIG],
-      Enums.bitLocation.power
+  async isRX(): Promise<boolean> {
+    return !!this.readBit(
+      await this.readRegister(Enums.registerAddresses.CONFIG),
+      Enums.bitLocation.RX
     );
-    await this.writeRegister(Enums.registerAddresses.CONFIG, configRegisterState);
   }
 
   async powerDown(): Promise<void> {
-    const configRegisterState = this.setBitLow(
-      this.registers[Enums.registerAddresses.CONFIG],
-      Enums.bitLocation.power
-    );
-    await this.writeRegister(Enums.registerAddresses.CONFIG, configRegisterState);
+    await this.command(Enums.commandCode.writeRegisters | Enums.registerAddresses.CONFIG, {
+      data: this.setBitLow(
+        await this.readRegister(Enums.registerAddresses.CONFIG),
+        Enums.bitLocation.POWER
+      ),
+    });
   }
 
-  async readRegister(registerAddress: number): Promise<number> {
-    const registerState = await this.command(Enums.commandCode.readRegisters | registerAddress, {
-      readBufferLength: 2,
+  async powerUp(): Promise<void> {
+    await this.command(Enums.commandCode.writeRegisters | Enums.registerAddresses.CONFIG, {
+      data: this.setBitHigh(
+        await this.readRegister(Enums.registerAddresses.CONFIG),
+        Enums.bitLocation.POWER
+      ),
     });
+    await this.waitTime(100);
+  }
 
-    this.registers[registerAddress] = registerState.values().next().value;
-    return this.registers[registerAddress];
+  async readRegister(registerAddress: number, registerSize = 2): Promise<number> {
+    const registerState = await this.command(Enums.commandCode.readRegisters | registerAddress, {
+      readBufferLength: registerSize,
+    });
+    const response = registerState.at(1);
+
+    this.logVerbose(
+      `READ register ${Object.keys(Enums.registerAddresses).find(
+        (key) => Enums.registerAddresses[key] === registerAddress
+      )}: ${response.toString(2)}`
+    );
+
+    return response;
   }
 
   async writeRegister(registerToWrite: number, data: number): Promise<number> {
+    await this.setCE(0);
+    await this.waitTime(1);
+    this.logVerbose(
+      `WRITE register ${Object.keys(Enums.registerAddresses).find(
+        (key) => Enums.registerAddresses[key] === registerToWrite
+      )}: ${data.toString(2)}`
+    );
     await this.command(Enums.commandCode.writeRegisters | registerToWrite, {
       data,
     });
-
-    this.registers[registerToWrite] = data;
-
-    return this.registers[registerToWrite];
+    await this.setCE(1);
+    await this.waitTime(1);
+    return this.readRegister(registerToWrite);
   }
 
   setCE(state: number): Promise<number> {
     return new Promise((resolve) => {
       if (state !== this.cePinState) {
-        rpio.write(this.cePinNumber, state);
+        rpio.write(this.CEPinNumber, state);
         this.cePinState = state;
         resolve(this.cePinState);
       } else {
@@ -284,9 +262,19 @@ export class Radio extends EventEmitter {
   }
 
   log(...args: unknown[]): void {
-    if (process.env.ENABLE_DEBUGGER) {
+    if (process.env.LOG_LEVEL) {
       console.log(...args);
     }
+  }
+
+  logVerbose(...args: unknown[]): void {
+    if (process.env.LOG_LEVEL === "verbose") {
+      this.log(...args);
+    }
+  }
+
+  readBit(source: number, location: number): number {
+    return source & (1 << location);
   }
 
   setBitHigh(source: number, location: number): number {
@@ -297,25 +285,25 @@ export class Radio extends EventEmitter {
     return source & ~(1 << location);
   }
 
-  constructor(spi = "/dev/spidev0.0", cePin = 22) {
+  parseData(data: number[]): string {
+    return data.map((charCode) => String.fromCharCode(charCode)).join("");
+  }
+
+  transformToTransportArray(number: number): number[] {
+    const array = [];
+    let string = number.toString(16);
+    if (string.length % 2 === 1) {
+      string = "0" + string;
+    }
+    for (let i = 0; i < string.length; i += 2) {
+      array.push(string[i] + string[i + 1]);
+    }
+    return array.map((e) => parseInt(e, 16));
+  }
+
+  constructor(spiAddress: string, CEPinNumber: number) {
     super();
-    this.cePinNumber = cePin;
-    this.spiAddress = spi;
+    this.CEPinNumber = CEPinNumber;
+    this.SPIAddress = spiAddress;
   }
-}
-
-function parseData(data) {
-  return data.map((charCode) => String.fromCharCode(charCode)).join("");
-}
-
-function transformToTransportArray(number: number) {
-  const array = [];
-  let string = number.toString(16);
-  if (string.length % 2 === 1) {
-    string = "0" + string;
-  }
-  for (let i = 0; i < string.length; i += 2) {
-    array.push(string[i] + string[i + 1]);
-  }
-  return array.map((e) => parseInt(e, 16));
 }
