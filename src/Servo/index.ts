@@ -1,42 +1,42 @@
 import i2c, { I2CBus } from "i2c-bus";
 
-const addr = 0x40;
-
-const pins = [
-  {
-    start: 0x06,
-    end: 0x08,
-    position: 250,
-    center: 250,
-    commandRange: [150, 350],
-  },
-  {
-    start: 0x0a,
-    end: 0x0c,
-    position: 250,
-    center: 250,
-    commandRange: [150, 350],
-  },
-];
-
 const sleep = (time) =>
   new Promise((resolve) => {
     setTimeout(resolve, time);
   });
 
-export class ServoController {
-  private bus: I2CBus;
+export type ServoCode = 0 | 1;
 
-  async init(): Promise<void> {
+export class ServoController {
+  private static piServoShieldAddr = 0x40;
+  private bus: I2CBus;
+  private servos = [
+    {
+      start: 0x06,
+      end: 0x08,
+      position: 250,
+      center: 250,
+      commandRange: [150, 350],
+    },
+    {
+      start: 0x0a,
+      end: 0x0c,
+      position: 250,
+      center: 250,
+      commandRange: [150, 350],
+    },
+  ];
+
+  async initialize(): Promise<void> {
     this.bus = i2c.openSync(1);
-    await this.writeByte(addr, 0, 0x20);
+    await this.writeByte(ServoController.piServoShieldAddr, 0, 0x20);
     await sleep(250);
-    await this.writeByte(addr, 0, 0x10);
+    await this.writeByte(ServoController.piServoShieldAddr, 0, 0x10);
     await sleep(250);
-    await this.writeByte(addr, 0xfe, 0x79);
-    await this.writeByte(addr, 0, 0x20);
+    await this.writeByte(ServoController.piServoShieldAddr, 0xfe, 0x79);
+    await this.writeByte(ServoController.piServoShieldAddr, 0, 0x20);
     await sleep(250);
-    pins.forEach((pin, index) => this.move(index, pin.center));
+    this.servos.forEach((servo, index) => this.move(index as ServoCode, servo.center));
     return;
   }
 
@@ -52,39 +52,35 @@ export class ServoController {
     });
   }
 
-  async center(pin: number): Promise<void> {
-    await this.move(pin, pins[pin].center, true);
+  async center(servoCode: ServoCode): Promise<void> {
+    await this.move(servoCode, this.servos[servoCode].center, true);
   }
 
-  async calibrate(pinCode: number, degrees: number, absolute?: boolean): Promise<void> {
-    const pin = pins[pinCode];
-    const newCenter = absolute ? degrees : pin.center + degrees;
-    if (newCenter < pin.commandRange[0]) {
-      pin.center = pin.commandRange[0];
-    } else if (newCenter > pin.commandRange[1]) {
-      pin.center = pin.commandRange[1];
+  async calibrate(servoCode: ServoCode, degrees: number, absolute?: boolean): Promise<void> {
+    const servo = this.servos[servoCode];
+    const newCenter = absolute ? degrees : servo.center + degrees;
+    if (newCenter < servo.commandRange[0]) {
+      servo.center = servo.commandRange[0];
+    } else if (newCenter > servo.commandRange[1]) {
+      servo.center = servo.commandRange[1];
     } else {
-      pin.commandRange[0] = pin.commandRange[0] + degrees;
-      pin.commandRange[1] = pin.commandRange[1] + degrees;
-      pin.center = newCenter;
+      servo.commandRange[0] = servo.commandRange[0] + degrees;
+      servo.commandRange[1] = servo.commandRange[1] + degrees;
+      servo.center = newCenter;
     }
-    await this.center(pinCode);
+    await this.center(servoCode);
   }
 
-  async move(pinCode: number, degrees: number, absolute?: boolean): Promise<void> {
-    const pin = pins[pinCode];
-    let position = absolute ? degrees : pin.position + degrees;
-    if (position < pin.commandRange[0]) {
-      position = pin.commandRange[0];
-    } else if (position > pin.commandRange[1]) {
-      position = pin.commandRange[1];
+  async move(servoCode: ServoCode, degrees: number, absolute?: boolean): Promise<void> {
+    const servo = this.servos[servoCode];
+    let position = absolute ? degrees : servo.position + degrees;
+    if (position < servo.commandRange[0]) {
+      position = servo.commandRange[0];
+    } else if (position > servo.commandRange[1]) {
+      position = servo.commandRange[1];
     }
-    pin.position = position;
-    await this.writeWord(addr, pin.start, 0);
-    await this.writeWord(addr, pin.end, position);
-  }
-
-  constructor() {
-    // TODO
+    servo.position = position;
+    await this.writeWord(ServoController.piServoShieldAddr, servo.start, 0);
+    await this.writeWord(ServoController.piServoShieldAddr, servo.end, position);
   }
 }

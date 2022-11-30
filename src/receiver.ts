@@ -1,5 +1,5 @@
 import { Radio } from "./Radio";
-import { ServoController } from "./Servo";
+import { ServoController, ServoCode } from "./Servo";
 import { Engine } from "./Engine";
 
 export async function startReceiver(address: number, spi: string, ce: number): Promise<void> {
@@ -8,12 +8,14 @@ export async function startReceiver(address: number, spi: string, ce: number): P
   const engine = new Engine();
   let centringTimeout: NodeJS.Timeout;
 
-  await servo.init();
-  await radio.initializeConnectionWithRadio();
+  engine.initialize();
+  await servo.initialize();
+  await radio.initialize();
 
   await radio.enableReceiverMode(address);
 
   radio.on("response:received", (data) => {
+    console.log(`Received: ${data}`);
     clearTimeout(centringTimeout);
     centringTimeout = setTimeout(function () {
       servo.center(0);
@@ -24,21 +26,21 @@ export async function startReceiver(address: number, spi: string, ce: number): P
     const commandValue = data.slice(-2);
     if (target === "0" || target === "1") {
       // SERVO COMMANDS
+      const servoCode = parseInt(target) as ServoCode;
       if (command === "+") {
-        servo.move(target, parseInt(commandValue));
+        servo.move(servoCode, parseInt(commandValue));
       } else if (command === "-") {
-        servo.move(target, -parseInt(commandValue));
+        servo.move(servoCode, -parseInt(commandValue));
       } else if (command === "U") {
-        servo.calibrate(target, parseInt(commandValue));
+        servo.calibrate(servoCode, parseInt(commandValue));
       } else if (command === "D") {
-        servo.calibrate(target, -parseInt(commandValue));
+        servo.calibrate(servoCode, -parseInt(commandValue));
       }
     } else if (target === "E") {
-      // ENGINE COMMAND
       if (command === "+") {
-        engine.move(1);
+        engine.throttle("up");
       } else if (command === "-") {
-        engine.move(0);
+        engine.throttle("down");
       } else if (command === "0") {
         engine.turnOff();
       }

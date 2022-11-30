@@ -2,7 +2,7 @@ import { Radio } from "./Radio";
 
 export async function startTransmitter(address: number, spi: string, ce: number): Promise<void> {
   const radio = new Radio(spi, ce);
-  await radio.initializeConnectionWithRadio();
+  await radio.initialize();
   await radio.enableTransmitterMode(address);
 
   process.stdin.setRawMode(true);
@@ -42,6 +42,9 @@ export async function startTransmitter(address: number, spi: string, ce: number)
     }
     if (key === "x") {
       command = "E-00";
+    }
+    if (key === "o") {
+      command = "E000";
     }
 
     try {

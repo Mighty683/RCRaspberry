@@ -1,7 +1,6 @@
 "use strict";
 
 import { EventEmitter } from "events";
-import { receiveMessageOnPort } from "worker_threads";
 
 import SPI from "pi-spi";
 import type { SPI as SPIInterface } from "pi-spi";
@@ -10,6 +9,10 @@ import rpio from "rpio";
 import Enums from "./enums";
 
 export type SpeedMode = "HIGH_SPEED" | "LOW_SPEED";
+
+export declare interface Radio {
+  on(event: "response:received", listener: (data: string) => void): this;
+}
 export class Radio extends EventEmitter {
   private rxInterval: NodeJS.Timer;
   private spi: SPIInterface;
@@ -26,7 +29,7 @@ export class Radio extends EventEmitter {
     this.SPIAddress = spiAddress;
   }
 
-  public async initializeConnectionWithRadio(): Promise<void> {
+  public async initialize(): Promise<void> {
     rpio.init();
     rpio.open(this.CEPinNumber, rpio.OUTPUT, rpio.LOW);
     this.cePinState = rpio.LOW;
@@ -302,7 +305,7 @@ export class Radio extends EventEmitter {
   }
 
   private log(...args: unknown[]): void {
-    if (process.env.LOG_LEVEL) {
+    if (process.env.LOG_LEVEL && process.env.LOG_LEVEL !== "none") {
       console.log(...args);
     }
   }
