@@ -1,6 +1,7 @@
 import { Radio } from "./Radio";
 
 export async function startTransmitter(address: number, spi: string, ce: number): Promise<void> {
+  console.log("Starting trasmitter");
   const radio = new Radio(spi, ce);
   await radio.initialize();
   await radio.enableTransmitterMode(address);

@@ -3,6 +3,7 @@ import { ServoController, ServoCode } from "./Servo";
 import { Engine } from "./Engine";
 
 export async function startReceiver(address: number, spi: string, ce: number): Promise<void> {
+  console.log("Starting receiver");
   const radio = new Radio(spi, ce);
   const servo = new ServoController();
   const engine = new Engine();

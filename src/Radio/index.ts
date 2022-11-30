@@ -261,7 +261,6 @@ export class Radio extends EventEmitter {
         )
       );
     }
-    console.log(await (await this.readRegister(Enums.registerAddresses.RF_SETUP)).toString(2));
   }
 
   private command(
